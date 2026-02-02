@@ -1,0 +1,437 @@
+"""
+Менеджер базы данных для работы с SQLite
+"""
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select, delete
+from typing import Optional, List
+from datetime import datetime
+
+from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache
+import config
+
+
+class DatabaseManager:
+    """Менеджер для асинхронной работы с базой данных"""
+    
+    def __init__(self, database_url: str = None):
+        self.database_url = database_url or config.DATABASE_URL
+        self.engine = create_async_engine(self.database_url, echo=False)
+        self.async_session = async_sessionmaker(
+            self.engine, 
+            class_=AsyncSession, 
+            expire_on_commit=False
+        )
+    
+    async def init_db(self):
+        """Инициализация базы данных и создание таблиц"""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("✅ База данных инициализирована")
+    
+    async def close(self):
+        """Закрытие соединения с БД"""
+        await self.engine.dispose()
+    
+    # ========== ПОЛЬЗОВАТЕЛИ ==========
+    
+    async def get_or_create_user(self, user_id: int, tg_user_or_username: any = None, 
+                                  first_name: str = None, last_name: str = None,
+                                  username: str = None) -> User:
+        """Получить или создать пользователя"""
+        # Более надежный способ извлечения данных из объекта пользователя
+        if tg_user_or_username and not isinstance(tg_user_or_username, str):
+            tg_user = tg_user_or_username
+            username = getattr(tg_user, 'username', None)
+            # Приоритет отдаем переданным аргументам, если они не None
+            first_name = first_name or getattr(tg_user, 'first_name', None)
+            last_name = last_name or getattr(tg_user, 'last_name', None)
+        else:
+            username = tg_user_or_username
+
+        async with self.async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                user = User(
+                    id=user_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
+                print(f"✅ Создан новый пользователь: {user_id}")
+            else:
+                # Обновляем last_active
+                user.last_active = datetime.utcnow()
+                # Также обновляем информацию о пользователе, если она изменилась
+                if username: user.username = username
+                if first_name: user.first_name = first_name
+                if last_name: user.last_name = last_name
+                await session.commit()
+            
+            return user
+    
+    # ========== ПЛЕЙЛИСТЫ ==========
+    
+    async def create_playlist(self, user_id: int, name: str, description: str = None) -> Playlist:
+        """Создать новый плейлист"""
+        async with self.async_session() as session:
+            playlist = Playlist(
+                user_id=user_id,
+                name=name,
+                description=description
+            )
+            session.add(playlist)
+            await session.commit()
+            await session.refresh(playlist)
+            return playlist
+    
+    async def get_user_playlists(self, user_id: int) -> List[Playlist]:
+        """Получить все плейлисты пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Playlist)
+                .where(Playlist.user_id == user_id)
+                .order_by(Playlist.created_at.desc())
+            )
+            return list(result.scalars().all())
+    
+    async def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
+        """Получить плейлист по ID"""
+        async with self.async_session() as session:
+            result = await session.execute(select(Playlist).where(Playlist.id == playlist_id))
+            return result.scalar_one_or_none()
+    
+    async def delete_playlist(self, playlist_id: int) -> bool:
+        """Удалить плейлист"""
+        async with self.async_session() as session:
+            result = await session.execute(delete(Playlist).where(Playlist.id == playlist_id))
+            await session.commit()
+            return result.rowcount > 0
+    
+    # ========== ТРЕКИ ==========
+    
+    async def get_or_create_track(self, track_data: dict) -> Track:
+        """Получить или создать трек"""
+        async with self.async_session() as session:
+            track_id = track_data['id']
+            result = await session.execute(select(Track).where(Track.id == track_id))
+            track = result.scalar_one_or_none()
+            
+            if not track:
+                track = Track(**track_data)
+                session.add(track)
+                await session.commit()
+                await session.refresh(track)
+            
+            return track
+    
+    async def get_track(self, track_id: str) -> Optional[Track]:
+        """Получить трек по ID"""
+        async with self.async_session() as session:
+            result = await session.execute(select(Track).where(Track.id == track_id))
+            return result.scalar_one_or_none()
+    
+    # ========== ТРЕКИ В ПЛЕЙЛИСТАХ ==========
+    
+    async def add_track_to_playlist(self, playlist_id: int, track_id: str) -> bool:
+        """Добавить трек в плейлист"""
+        async with self.async_session() as session:
+            # Проверяем, не добавлен ли уже трек
+            result = await session.execute(
+                select(PlaylistTrack)
+                .where(PlaylistTrack.playlist_id == playlist_id)
+                .where(PlaylistTrack.track_id == track_id)
+            )
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                return False  # Трек уже в плейлисте
+            
+            # Получаем максимальную позицию
+            result = await session.execute(
+                select(PlaylistTrack.position)
+                .where(PlaylistTrack.playlist_id == playlist_id)
+                .order_by(PlaylistTrack.position.desc())
+            )
+            max_position = result.scalar_one_or_none()
+            new_position = (max_position or 0) + 1
+            
+            # Добавляем трек
+            playlist_track = PlaylistTrack(
+                playlist_id=playlist_id,
+                track_id=track_id,
+                position=new_position
+            )
+            session.add(playlist_track)
+            
+            # Обновляем время изменения плейлиста
+            playlist_result = await session.execute(select(Playlist).where(Playlist.id == playlist_id))
+            playlist = playlist_result.scalar_one_or_none()
+            if playlist:
+                playlist.updated_at = datetime.utcnow()
+            
+            await session.commit()
+            return True
+    
+    async def get_playlist_tracks(self, playlist_id: int) -> List[Track]:
+        """Получить все треки плейлиста"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Track)
+                .join(PlaylistTrack)
+                .where(PlaylistTrack.playlist_id == playlist_id)
+                .order_by(PlaylistTrack.position)
+            )
+            return list(result.scalars().all())
+    
+    async def remove_track_from_playlist(self, playlist_id: int, track_id: str) -> bool:
+        """Удалить трек из плейлиста"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                delete(PlaylistTrack)
+                .where(PlaylistTrack.playlist_id == playlist_id)
+                .where(PlaylistTrack.track_id == track_id)
+            )
+            await session.commit()
+            return result.rowcount > 0
+    
+    async def get_playlist_track_count(self, playlist_id: int) -> int:
+        """Получить количество треков в плейлисте"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(PlaylistTrack)
+                .where(PlaylistTrack.playlist_id == playlist_id)
+            )
+            return len(list(result.scalars().all()))
+    
+    # ========== ИСТОРИЯ СКАЧИВАНИЙ (Функция 5) ==========
+    
+    async def add_download_to_history(self, user_id: int, track_id: str, quality: str = '192', file_size: int = 0):
+        """Добавить запись в историю скачиваний"""
+        async with self.async_session() as session:
+            history_entry = DownloadHistory(
+                user_id=user_id,
+                track_id=track_id,
+                quality=quality,
+                file_size_mb=file_size // (1024 * 1024)  # Конвертируем в MB
+            )
+            session.add(history_entry)
+            
+            # Обновляем статистику пользователя
+            user_result = await session.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+            if user:
+                user.total_downloads += 1
+                user.total_size_mb += file_size // (1024 * 1024)
+            
+            # Обновляем счётчик скачиваний трека
+            track_result = await session.execute(select(Track).where(Track.id == track_id))
+            track = track_result.scalar_one_or_none()
+            if track:
+                track.download_count += 1
+            
+            await session.commit()
+    
+    async def get_download_history(self, user_id: int, limit: int = 10):
+        """Получить историю скачиваний пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(DownloadHistory, Track)
+                .join(Track, DownloadHistory.track_id == Track.id)
+                .where(DownloadHistory.user_id == user_id)
+                .order_by(DownloadHistory.downloaded_at.desc())
+                .limit(limit)
+            )
+            
+            history = []
+            for download, track in result.all():
+                history.append({
+                    'track': {
+                        'id': track.id,
+                        'name': track.name,
+                        'artist': track.artist,
+                        'spotify_url': track.spotify_url
+                    },
+                    'downloaded_at': download.downloaded_at,
+                    'quality': download.quality,
+                    'file_size_mb': download.file_size_mb
+                })
+            
+            return history
+    
+    async def clear_download_history(self, user_id: int):
+        """Очистить историю скачиваний пользователя"""
+        async with self.async_session() as session:
+            await session.execute(
+                delete(DownloadHistory).where(DownloadHistory.user_id == user_id)
+            )
+            await session.commit()
+    
+    # ========== ИЗБРАННОЕ (Функция 8) ==========
+    
+    async def add_to_favorites(self, user_id: int, track_id: str):
+        """Добавить трек в избранное"""
+        async with self.async_session() as session:
+            # Проверяем, не добавлен ли уже
+            result = await session.execute(
+                select(Favorite)
+                .where(Favorite.user_id == user_id)
+                .where(Favorite.track_id == track_id)
+            )
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                return False  # Уже в избранном
+            
+            favorite = Favorite(user_id=user_id, track_id=track_id)
+            session.add(favorite)
+            await session.commit()
+            return True
+    
+    async def remove_from_favorites(self, user_id: int, track_id: str):
+        """Удалить трек из избранного"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                delete(Favorite)
+                .where(Favorite.user_id == user_id)
+                .where(Favorite.track_id == track_id)
+            )
+            await session.commit()
+            return result.rowcount > 0
+    
+    async def get_favorites(self, user_id: int):
+        """Получить избранные треки пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Favorite, Track)
+                .join(Track, Favorite.track_id == Track.id)
+                .where(Favorite.user_id == user_id)
+                .order_by(Favorite.added_at.desc())
+            )
+            
+            favorites = []
+            for fav, track in result.all():
+                favorites.append({
+                    'track': {
+                        'id': track.id,
+                        'name': track.name,
+                        'artist': track.artist,
+                        'spotify_url': track.spotify_url,
+                        'image_url': track.image_url
+                    },
+                    'added_at': fav.added_at
+                })
+            
+            return favorites
+    
+    async def is_favorite(self, user_id: int, track_id: str) -> bool:
+        """Проверить, находится ли трек в избранном"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Favorite)
+                .where(Favorite.user_id == user_id)
+                .where(Favorite.track_id == track_id)
+            )
+            return result.scalar_one_or_none() is not None
+    
+    # ========== НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ (Функция 3, 18) ==========
+    
+    async def update_user_setting(self, user_id: int, setting_name: str, value):
+        """Обновить настройку пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            
+            if user:
+                setattr(user, setting_name, value)
+                await session.commit()
+                return True
+            return False
+    
+    async def get_user_quality(self, user_id: int) -> str:
+        """Получить предпочитаемое качество пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            return user.preferred_quality if user else '192'
+    
+    async def get_user_stats(self, user_id: int):
+        """Получить статистику пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return None
+            
+            return {
+                'total_downloads': user.total_downloads,
+                'total_size_mb': user.total_size_mb,
+                'member_since': user.created_at,
+                'last_active': user.last_active
+            }
+    
+    # ========== КЭШИРОВАНИЕ (Функция 10) ==========
+    
+    async def update_track_cache(self, track_id: str, telegram_file_id: str, 
+                                 file_format: str = 'mp3', quality: str = '192'):
+        """Обновить кэш трека (сохранить telegram_file_id в TrackCache)"""
+        async with self.async_session() as session:
+            # Проверяем, есть ли уже такой кэш (чтобы не дублировать)
+            result = await session.execute(
+                select(TrackCache)
+                .where(TrackCache.track_id == track_id)
+                .where(TrackCache.file_format == file_format)
+                .where(TrackCache.quality == quality)
+            )
+            cache_entry = result.scalar_one_or_none()
+            
+            if cache_entry:
+                cache_entry.telegram_file_id = telegram_file_id
+                cache_entry.created_at = datetime.utcnow()
+            else:
+                cache_entry = TrackCache(
+                    track_id=track_id,
+                    telegram_file_id=telegram_file_id,
+                    file_format=file_format,
+                    quality=quality
+                )
+                session.add(cache_entry)
+            
+            # Также обновляем время кэширования в основном треке для статистики
+            track_result = await session.execute(select(Track).where(Track.id == track_id))
+            track = track_result.scalar_one_or_none()
+            if track:
+                track.telegram_file_id = telegram_file_id # Совместимость со старым кодом
+                track.cached_at = datetime.utcnow()
+
+            await session.commit()
+            return True
+    
+    async def get_cached_file_id(self, track_id: str, file_format: str = 'mp3', 
+                                 quality: str = '192') -> Optional[str]:
+        """Получить telegram_file_id из кэша для конкретного формата и качества"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TrackCache)
+                .where(TrackCache.track_id == track_id)
+                .where(TrackCache.file_format == file_format)
+                .where(TrackCache.quality == quality)
+            )
+            cache_entry = result.scalar_one_or_none()
+            
+            if cache_entry:
+                # Проверяем, не устарел ли кэш (7 дней)
+                age = (datetime.utcnow() - cache_entry.created_at).days
+                if age < 7:
+                    return cache_entry.telegram_file_id
+                else:
+                    # Удаляем устаревший кэш
+                    await session.delete(cache_entry)
+                    await session.commit()
+            
+            return None
