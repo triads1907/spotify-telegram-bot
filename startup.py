@@ -14,10 +14,11 @@ def main():
     processes = []
 
     try:
-        # 1. Start Web App
-        print("🔗 Starting Web Interface (Flask)...")
+        # 1. Start Web App with Gunicorn (production WSGI server)
+        print("🔗 Starting Web Interface (Gunicorn)...")
+        port = env.get('PORT', '5000')
         web_process = subprocess.Popen(
-            [sys.executable, "web/app.py"],
+            ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "2", "--timeout", "120", "web.app:app"],
             env=env,
             stdout=sys.stdout,
             stderr=sys.stderr
