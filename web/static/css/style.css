@@ -42,6 +42,15 @@ body {
     padding: 8px;
 }
 
+.content-section {
+    display: none;
+    padding: 24px 32px;
+}
+
+.content-section.active {
+    display: block;
+}
+
 /* Sidebar */
 .sidebar {
     background: var(--spotify-dark);
@@ -136,7 +145,46 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 24px;
+    padding: 16px 32px;
+    position: sticky;
+    top: 0;
+    background: rgba(18, 18, 18, 0.8);
+    backdrop-filter: blur(20px);
+    z-index: 100;
+}
+
+.search-bar {
+    position: relative;
+    width: 360px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    color: var(--spotify-light-gray);
+    pointer-events: none;
+}
+
+#searchInput {
+    width: 100%;
+    padding: 12px 12px 12px 42px;
+    background: var(--spotify-gray);
+    border: 1px solid transparent;
+    border-radius: 500px;
+    color: var(--spotify-white);
+    font-size: 14px;
+    outline: none;
+    transition: all var(--transition-fast);
+}
+
+#searchInput:focus {
+    background: #333;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 1px white inset;
 }
 
 .user-profile {
@@ -222,6 +270,106 @@ body {
     gap: 24px;
 }
 
+/* Results Grid & Track Cards */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+}
+
+.track-card {
+    background: var(--spotify-gray);
+    padding: 16px;
+    border-radius: 8px;
+    transition: background var(--transition-normal);
+    position: relative;
+    cursor: default;
+}
+
+.track-card:hover {
+    background: #2a2a2a;
+}
+
+.track-card .track-image {
+    width: 100%;
+    aspect-ratio: 1;
+    background: #333;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    position: relative;
+}
+
+.track-card .track-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.track-card .track-image svg {
+    width: 64px;
+    height: 64px;
+    color: var(--spotify-light-gray);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.track-card .track-info {
+    margin-bottom: 12px;
+}
+
+.track-card .track-name {
+    font-weight: 700;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.track-card .track-artist {
+    font-size: 14px;
+    color: var(--spotify-light-gray);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.track-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    flex: 1;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--spotify-green);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+}
+
+.action-btn:hover {
+    transform: scale(1.04);
+}
+
+.action-btn.secondary {
+    background: #333;
+}
+
+.action-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
 .playlist-card {
     background: var(--spotify-gray);
     padding: 16px;
@@ -262,46 +410,179 @@ body {
     color: var(--spotify-light-gray);
 }
 
-/* Forms & Modals */
+/* Modals */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    padding: 20px;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--spotify-gray);
+    width: 100%;
+    max-width: 450px;
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: var(--shadow-lg);
+    animation: modalAppear 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalAppear {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.modal-header h3 {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--spotify-light-gray);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    transition: all var(--transition-fast);
+}
+
+.close-btn:hover {
+    color: var(--spotify-white);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.close-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+.option-group {
+    margin-bottom: 24px;
+}
+
+.option-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
 .text-input {
     width: 100%;
-    padding: 12px;
-    background: var(--spotify-black);
+    padding: 14px;
+    background: #3e3e3e;
     border: 1px solid transparent;
     border-radius: 4px;
     color: var(--spotify-white);
     font-family: inherit;
-    margin-top: 4px;
+    font-size: 14px;
+    outline: none;
+    transition: all var(--transition-fast);
 }
 
 .text-input:focus {
-    outline: none;
-    border-color: var(--spotify-green);
+    background: #4a4a4a;
+    border-color: #777;
 }
 
 textarea.text-input {
-    min-height: 100px;
-    resize: vertical;
+    min-height: 120px;
+    resize: none;
 }
 
+.radio-group {
+    display: flex;
+    gap: 24px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.radio-label input[type="radio"] {
+    accent-color: var(--spotify-green);
+    width: 18px;
+    height: 18px;
+}
+
+.quality-select {
+    width: 100%;
+    padding: 14px;
+    background: #3e3e3e;
+    color: white;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    outline: none;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.download-btn,
 .create-btn {
     width: 100%;
-    padding: 12px;
+    padding: 16px;
     background: var(--spotify-green);
-    color: var(--spotify-white);
+    color: white;
     border: none;
-    border-radius: 24px;
+    border-radius: 500px;
     font-weight: 700;
-    margin-top: 12px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
     cursor: pointer;
+    transition: all var(--transition-fast);
+    margin-top: 12px;
+}
+
+.download-btn:hover,
+.create-btn:hover {
+    background: #1ed760;
+    transform: scale(1.02);
 }
 
 .playlists-selection-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    max-height: 300px;
+    gap: 12px;
+    max-height: 350px;
     overflow-y: auto;
+    padding-right: 8px;
 }
 
 .pl-selection-item {
