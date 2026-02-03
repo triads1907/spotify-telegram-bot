@@ -11,9 +11,11 @@ import httpx
 class DownloadService:
     """Сервис для поиска и скачивания музыки с YouTube"""
     
-    def __init__(self, download_dir: str = "./downloads"):
-        self.download_dir = download_dir
-        os.makedirs(download_dir, exist_ok=True)
+    def __init__(self, download_dir: str = "downloads"):
+        # Всегда используем абсолютный путь относительно корня проекта
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.download_dir = os.path.join(base_dir, download_dir)
+        os.makedirs(self.download_dir, exist_ok=True)
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
