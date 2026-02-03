@@ -19,12 +19,18 @@ CORS(app)
 # Инициализация сервисов
 spotify_service = SpotifyService()
 download_service = DownloadService()
-db = None
+db = DatabaseManager()
 
-async def init_db():
-    global db
-    db = DatabaseManager()
-    await db.init_db()
+def run_init_db():
+    """Синхронная обертка для инициализации БД"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(db.init_db())
+        loop.close()
+        print("✅ Web App: Database initialized")
+    except Exception as e:
+        print(f"❌ Web App: Database init error: {e}")
 
 @app.route('/')
 def index():
@@ -317,9 +323,10 @@ def add_track_to_playlist():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Инициализация БД
-    asyncio.run(init_db())
+    # Инициализация БД перед запуском
+    run_init_db()
     
     # Запуск сервера
     port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Web App starting on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)

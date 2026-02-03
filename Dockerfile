@@ -21,8 +21,5 @@ COPY . .
 # Создаем директории для данных
 RUN mkdir -p downloads data
 
-# Делаем скрипт запуска исполняемым
-RUN chmod +x scripts/run.sh
-
-# Запускаем через скрипт (Бот + Веб)
-CMD ["sh", "scripts/run.sh"]
+# Запускаем систему через Python-стартер (Бот + Веб)
+CMD ["python", "startup.py"]
