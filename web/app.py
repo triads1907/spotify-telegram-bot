@@ -21,16 +21,12 @@ spotify_service = SpotifyService()
 download_service = DownloadService()
 db = DatabaseManager()
 
-def run_init_db():
-    """Синхронная обертка для инициализации БД"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(db.init_db())
-        loop.close()
-        print("✅ Web App: Database initialized")
-    except Exception as e:
-        print(f"❌ Web App: Database init error: {e}")
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'ok'}), 200
+
+# Инициализацию БД оставляем боту, чтобы избежать блокировок SQLite
+# Web app будет использовать существующую БД или ждать её создания
 
 @app.route('/')
 def index():
@@ -324,7 +320,6 @@ def add_track_to_playlist():
 
 if __name__ == '__main__':
     # Инициализация БД перед запуском
-    run_init_db()
     
     # Запуск сервера
     port = int(os.environ.get('PORT', 5000))
