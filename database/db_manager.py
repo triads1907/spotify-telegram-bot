@@ -1,12 +1,13 @@
+from __future__ import annotations
 """
 Менеджер базы данных для работы с SQLite
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select, delete
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache
+from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken
 import config
 
 
@@ -441,9 +442,6 @@ class DatabaseManager:
     async def create_auth_token(self, user_id: int, token: str, expires_in_seconds: int = 300) -> AuthToken:
         """Создать временный токен для веб-авторизации"""
         async with self.async_session() as session:
-            from database.models import AuthToken
-            from datetime import timedelta
-            
             expires_at = datetime.utcnow() + timedelta(seconds=expires_in_seconds)
             
             # Удаляем старые токены пользователя
@@ -461,7 +459,6 @@ class DatabaseManager:
     async def verify_auth_token(self, token: str) -> Optional[User]:
         """Проверить токен и вернуть пользователя"""
         async with self.async_session() as session:
-            from database.models import AuthToken, User
             
             result = await session.execute(
                 select(AuthToken)
