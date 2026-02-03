@@ -79,8 +79,8 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if db:
         await db.create_auth_token(user_id, token)
     
-    # Ссылка на веб-интерфейс (берем из конфига или дефолт)
-    web_url = getattr(config, 'WEB_APP_URL', 'http://localhost:5000')
+    # Ссылка на веб-интерфейс
+    web_url = config.WEB_APP_URL
     auth_url = f"{web_url}/?auth={token}"
     
     text = f"🔗 <b>Вход в веб-интерфейс</b>\n\n" \

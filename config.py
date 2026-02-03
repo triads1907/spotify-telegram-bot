@@ -17,6 +17,9 @@ if not TELEGRAM_BOT_TOKEN:
 # База данных
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:///./spotify_bot.db')
 
+# Web App URL (для авторизации через Telegram)
+WEB_APP_URL = os.getenv('WEB_APP_URL', 'http://localhost:5000')
+
 # Настройки бота
 BOT_NAME = "Music Download Bot"
 BOT_VERSION = "2.1.0"
