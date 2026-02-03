@@ -21,5 +21,8 @@ COPY . .
 # Создаем директории для данных
 RUN mkdir -p downloads data
 
-# Запускаем бота
-CMD ["python", "bot.py"]
+# Делаем скрипт запуска исполняемым
+RUN chmod +x scripts/run.sh
+
+# Запускаем через скрипт (Бот + Веб)
+CMD ["sh", "scripts/run.sh"]
