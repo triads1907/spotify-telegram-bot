@@ -81,6 +81,7 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Ссылка на веб-интерфейс
     web_url = config.WEB_APP_URL
+    print(f"DEBUG: Generating auth link with URL: {web_url}")
     auth_url = f"{web_url}/?auth={token}"
     
     text = f"🔗 <b>Вход в веб-интерфейс</b>\n\n" \
