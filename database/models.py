@@ -180,3 +180,16 @@ class TrackCache(Base):
 
 # Обновляем Track для связи с TrackCache
 Track.caches = relationship("TrackCache", back_populates="track", cascade="all, delete-orphan")
+
+
+class AuthToken(Base):
+    """Модель для временных токенов авторизации"""
+    __tablename__ = 'auth_tokens'
+    
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('users.id', ondelete='CASCADE'))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<AuthToken(user_id={self.user_id}, expires={self.expires_at})>"

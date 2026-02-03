@@ -114,6 +114,10 @@ def main():
     # Команда /start
     application.add_handler(CommandHandler("start", start_command))
     
+    # Команда /login (для веба)
+    from handlers.start import login_command
+    application.add_handler(CommandHandler("login", login_command))
+    
     # Команда /help
     application.add_handler(CommandHandler("help", help_command))
     

@@ -65,3 +65,27 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML',
         disable_web_page_preview=True
     )
+
+async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Генерация ссылки для входа в веб-интерфейс"""
+    user_id = update.effective_user.id
+    db = context.bot_data.get('db')
+    import secrets
+    
+    # Генерируем временный токен
+    token = secrets.token_urlsafe(24)
+    
+    # Сохраняем токен в БД
+    if db:
+        await db.create_auth_token(user_id, token)
+    
+    # Ссылка на веб-интерфейс (берем из конфига или дефолт)
+    web_url = getattr(config, 'WEB_APP_URL', 'http://localhost:5000')
+    auth_url = f"{web_url}/?auth={token}"
+    
+    text = f"🔗 <b>Вход в веб-интерфейс</b>\n\n" \
+           f"Ваша персональная ссылка для входа (действует 5 минут):\n" \
+           f"<code>{auth_url}</code>\n\n" \
+           f"<i>Никому не передавайте эту ссылку!</i>"
+           
+    await update.message.reply_text(text, parse_mode='HTML', disable_web_page_preview=True)

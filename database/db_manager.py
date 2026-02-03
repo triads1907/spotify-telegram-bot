@@ -435,3 +435,49 @@ class DatabaseManager:
                     await session.commit()
             
             return None
+
+    # ========== АУТЕНТИФИКАЦИЯ (WEB) ==========
+
+    async def create_auth_token(self, user_id: int, token: str, expires_in_seconds: int = 300) -> AuthToken:
+        """Создать временный токен для веб-авторизации"""
+        async with self.async_session() as session:
+            from database.models import AuthToken
+            from datetime import timedelta
+            
+            expires_at = datetime.utcnow() + timedelta(seconds=expires_in_seconds)
+            
+            # Удаляем старые токены пользователя
+            await session.execute(delete(AuthToken).where(AuthToken.user_id == user_id))
+            
+            new_token = AuthToken(
+                token=token,
+                user_id=user_id,
+                expires_at=expires_at
+            )
+            session.add(new_token)
+            await session.commit()
+            return new_token
+
+    async def verify_auth_token(self, token: str) -> Optional[User]:
+        """Проверить токен и вернуть пользователя"""
+        async with self.async_session() as session:
+            from database.models import AuthToken, User
+            
+            result = await session.execute(
+                select(AuthToken)
+                .where(AuthToken.token == token)
+                .where(AuthToken.expires_at > datetime.utcnow())
+            )
+            auth_token = result.scalar_one_or_none()
+            
+            if auth_token:
+                user_result = await session.execute(select(User).where(User.id == auth_token.user_id))
+                user = user_result.scalar_one_or_none()
+                
+                # Удаляем токен после использования (one-time use)
+                await session.delete(auth_token)
+                await session.commit()
+                
+                return user
+            
+            return None
