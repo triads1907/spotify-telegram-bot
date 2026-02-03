@@ -439,13 +439,19 @@ class DatabaseManager:
 
     # ========== АУТЕНТИФИКАЦИЯ (WEB) ==========
 
-    async def create_auth_token(self, user_id: int, token: str, expires_in_seconds: int = 300) -> AuthToken:
-        """Создать временный токен для веб-авторизации"""
+    async def create_auth_token(self, user_id: int, token: str, expires_in_seconds: Optional[int] = None) -> AuthToken:
+        """Создать токен для веб-авторизации (постоянный или временный)"""
         async with self.async_session() as session:
-            expires_at = datetime.utcnow() + timedelta(seconds=expires_in_seconds)
+            # Сначала проверяем, есть ли уже токен у этого пользователя
+            result = await session.execute(select(AuthToken).where(AuthToken.user_id == user_id))
+            existing_token = result.scalar_one_or_none()
             
-            # Удаляем старые токены пользователя
-            await session.execute(delete(AuthToken).where(AuthToken.user_id == user_id))
+            if existing_token:
+                return existing_token
+
+            expires_at = None
+            if expires_in_seconds:
+                expires_at = datetime.utcnow() + timedelta(seconds=expires_in_seconds)
             
             new_token = AuthToken(
                 token=token,
@@ -457,24 +463,24 @@ class DatabaseManager:
             return new_token
 
     async def verify_auth_token(self, token: str) -> Optional[User]:
-        """Проверить токен и вернуть пользователя"""
+        """Проверить токен и вернуть пользователя (без удаления токена)"""
         async with self.async_session() as session:
-            
-            result = await session.execute(
-                select(AuthToken)
-                .where(AuthToken.token == token)
-                .where(AuthToken.expires_at > datetime.utcnow())
-            )
+            # Ищем токен, который либо не истек, либо не имеет срока годности
+            query = select(AuthToken).where(AuthToken.token == token)
+            result = await session.execute(query)
             auth_token = result.scalar_one_or_none()
             
             if auth_token:
+                # Если у токена есть срок годности, проверяем его
+                if auth_token.expires_at and auth_token.expires_at < datetime.utcnow():
+                    await session.delete(auth_token)
+                    await session.commit()
+                    return None
+                    
                 user_result = await session.execute(select(User).where(User.id == auth_token.user_id))
                 user = user_result.scalar_one_or_none()
                 
-                # Удаляем токен после использования (one-time use)
-                await session.delete(auth_token)
-                await session.commit()
-                
+                # Постоянные ссылки НЕ удаляем после использования
                 return user
             
             return None
