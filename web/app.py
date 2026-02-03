@@ -21,12 +21,32 @@ spotify_service = SpotifyService()
 download_service = DownloadService()
 db = DatabaseManager()
 
+# Флаг инициализации БД
+db_initialized = False
+
+def ensure_db_initialized():
+    """Ленивая инициализация БД при первом запросе"""
+    global db_initialized
+    if not db_initialized:
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(db.init_db())
+            loop.close()
+            db_initialized = True
+            print("✅ Web App: Database initialized")
+        except Exception as e:
+            print(f"⚠️  Web App: Database init warning: {e}")
+            # Не падаем, просто логируем - БД может быть уже инициализирована ботом
+
+@app.before_request
+def before_request():
+    """Инициализация БД перед первым запросом"""
+    ensure_db_initialized()
+
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'ok'}), 200
-
-# Инициализацию БД оставляем боту, чтобы избежать блокировок SQLite
-# Web app будет использовать существующую БД или ждать её создания
 
 @app.route('/')
 def index():
