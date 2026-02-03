@@ -19,6 +19,10 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:///./spotify_bot.db')
 
 # Web App URL (для авторизации через Telegram)
 WEB_APP_URL = os.getenv('WEB_APP_URL', 'http://localhost:5000')
+if WEB_APP_URL == 'http://localhost:5000':
+    print("⚠️  WEB_APP_URL не установлен! Ссылки будут вести на localhost.")
+else:
+    print(f"🌐 WEB_APP_URL установлен: {WEB_APP_URL}")
 
 # Настройки бота
 BOT_NAME = "Music Download Bot"
