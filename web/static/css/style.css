@@ -322,11 +322,74 @@ body {
     text-overflow: ellipsis;
 }
 
+.player-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 500px;
+}
+
 .player-controls {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 16px;
+}
+
+.player-progress-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    font-size: 12px;
+    color: var(--spotify-light-gray);
+}
+
+.progress-slider {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--spotify-dark);
+    outline: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.progress-slider:hover {
+    background: #404040;
+}
+
+.progress-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--spotify-white);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.progress-slider:hover::-webkit-slider-thumb {
+    opacity: 1;
+}
+
+.progress-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--spotify-white);
+    cursor: pointer;
+    border: none;
+    opacity: 0;
+}
+
+.progress-slider:hover::-moz-range-thumb {
+    opacity: 1;
 }
 
 .control-btn {
