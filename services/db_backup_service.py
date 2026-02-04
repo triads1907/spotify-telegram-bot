@@ -47,8 +47,8 @@ class DatabaseBackupService:
                 if file_size < 32768: # 32KB - это примерно пустая БД со схемой
                     print(f"⚠️  Local database is too small ({file_size} bytes), overwriting with backup...")
                 else:
-                    # В будущем здесь можно добавить сравнение дат или хешей
-                    print(f"ℹ️  Local database exists ({file_size} bytes). Applying backup to be safe.")
+                    print(f"✅ Local database exists and looks healthy ({file_size} bytes). Skipping restoration.")
+                    return False
             
             # Скачиваем backup
             print(f"📥 Downloading database backup from Telegram...")
