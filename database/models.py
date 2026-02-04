@@ -4,7 +4,7 @@
 from datetime import datetime
 from sqlalchemy import BigInteger, String, Integer, DateTime, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from typing import List
+from typing import List, Optional
 
 
 class Base(DeclarativeBase):
