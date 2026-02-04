@@ -316,8 +316,16 @@ def add_track_to_playlist():
         asyncio.set_event_loop(loop)
         
         # 1. Получаем/создаем трек в БД
+        # Генерируем стабильный ID на основе названия и исполнителя
+        import hashlib
+        track_id = track_data.get('id')
+        if not track_id or track_id.startswith('web_'):
+            # Создаем уникальный ID на основе исполнителя и названия
+            unique_string = f"{track_data.get('artist', '')}_{track_data.get('name', '')}".lower()
+            track_id = f"web_{hashlib.md5(unique_string.encode()).hexdigest()[:16]}"
+        
         track = loop.run_until_complete(db.get_or_create_track({
-            'id': track_data.get('id', f"web_{int(asyncio.get_event_loop().time())}"),
+            'id': track_id,
             'name': track_data.get('name'),
             'artist': track_data.get('artist'),
             'album': track_data.get('album'),
