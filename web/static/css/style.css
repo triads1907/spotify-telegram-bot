@@ -464,8 +464,14 @@ body {
     font-weight: 700;
 }
 
-grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-gap: 24px;
+.create-pl-btn:hover {
+    transform: scale(1.05);
+}
+
+.playlists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 24px;
 }
 
 /* Results Grid & Track Cards */
