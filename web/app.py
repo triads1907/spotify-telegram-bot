@@ -1,7 +1,7 @@
 """
 Flask Web Application для музыкального бота
 """
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
 import asyncio
 import os
