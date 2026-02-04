@@ -3,6 +3,7 @@
 let currentTrack = null;
 let searchTimeout = null;
 let resultsData = [];
+let libraryData = [];
 let userData = JSON.parse(localStorage.getItem('userData') || 'null');
 const audioPlayer = document.getElementById('audioPlayer');
 
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeSearch();
     initializePlayer();
     initializePlaylists();
+    loadLibrary();
 
     if (userData) {
         loadPlaylists();
@@ -149,7 +151,31 @@ async function searchTracks(query) {
         displayResults(data.tracks || []);
     } catch (error) {
         console.error('Search error:', error);
-        showNotification('Search failed', 'error');
+        showNotification('Search failed. Please try again.', 'error');
+    }
+}
+
+async function loadLibrary() {
+    try {
+        const response = await fetch('/api/library');
+        const data = await response.json();
+        const libraryGrid = document.getElementById('libraryGrid');
+
+        if (!data.tracks || data.tracks.length === 0) {
+            document.getElementById('librarySection').style.display = 'none';
+            return;
+        }
+
+        document.getElementById('librarySection').style.display = 'block';
+        libraryGrid.innerHTML = '';
+        libraryData = data.tracks;
+
+        data.tracks.forEach((track, index) => {
+            const card = renderTrackCard(track, index, 'library');
+            libraryGrid.innerHTML += card;
+        });
+    } catch (error) {
+        console.error('Load library error:', error);
     }
 }
 
@@ -162,8 +188,12 @@ function displayResults(tracks) {
         return;
     }
 
-    resultsGrid.innerHTML = tracks.map((track, index) => `
-        <div class="track-card" data-index="${index}">
+    resultsGrid.innerHTML = tracks.map((track, index) => renderTrackCard(track, index, 'search')).join('');
+}
+
+function renderTrackCard(track, index, type = 'search') {
+    return `
+        <div class="track-card" data-index="${index}" data-type="${type}">
             <div class="track-image">
                 ${track.image ? `<img src="${track.image}" alt="${track.name}" />` :
             `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`}
@@ -179,19 +209,20 @@ function displayResults(tracks) {
                 <button class="action-btn secondary" onclick="openDownloadModal(this)">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
                 </button>
-                ${userData ? `<button class="action-btn secondary" onclick="openAddToPlaylistModal(${index})">
+                ${userData ? `<button class="action-btn secondary" onclick="openAddToPlaylistModal(${index}, '${type}')">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>` : ''}
             </div>
         </div>
-    `).join('');
+    `;
 }
 
 // Playback Logic
 async function playTrack(button) {
     const card = button.closest('.track-card');
     const index = parseInt(card.dataset.index);
-    const track = resultsData[index];
+    const type = card.dataset.type;
+    const track = type === 'library' ? libraryData[index] : resultsData[index];
 
     if (!track) return;
 
@@ -259,8 +290,8 @@ async function playFromYouTube(track) {
 function updatePlayerUI(track) {
     const playerTrackInfo = document.querySelector('.player-track-info');
     playerTrackInfo.querySelector('.track-image').innerHTML = track.image ?
-        `<img src="${track.image}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" />` :
-        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`;
+        `< img src = "${track.image}" style = "width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" /> ` :
+        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg > `;
     playerTrackInfo.querySelector('.track-name').textContent = track.name;
     playerTrackInfo.querySelector('.track-artist').textContent = track.artist;
 }
@@ -310,13 +341,13 @@ function formatTime(seconds) {
     if (isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return `${mins}: ${secs < 10 ? '0' : ''}${secs}`;
 }
 
 function updatePlayButton(isPlaying) {
     document.getElementById('playBtn').innerHTML = isPlaying ?
-        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>` :
-        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg > ` :
+        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M8 5v14l11-7z" /></svg > `;
 }
 
 // Playlists Logic
@@ -351,14 +382,14 @@ function displayPlaylists(playlists) {
     }
 
     grid.innerHTML = playlists.map(pl => `
-        <div class="playlist-card" onclick="viewPlaylist(${pl.id}, '${pl.name.replace(/'/g, "\\'")}')">
-            <div class="playlist-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
-            </div>
+    < div class= "playlist-card" onclick = "viewPlaylist(${pl.id}, '${pl.name.replace(/'/g, "\\'")}')">
+        < div class="playlist-icon" >
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" /></svg>
+            </div >
             <div class="playlist-name">${pl.name}</div>
             <div class="playlist-count">${pl.track_count} tracks</div>
-        </div>
-    `).join('');
+        </div >
+        `).join('');
 }
 
 async function viewPlaylist(playlistId, playlistName) {
@@ -435,8 +466,8 @@ async function createPlaylist() {
 }
 
 let trackToPlaylist = null;
-function openAddToPlaylistModal(trackIndex) {
-    trackToPlaylist = resultsData[trackIndex];
+function openAddToPlaylistModal(trackIndex, type = 'search') {
+    trackToPlaylist = type === 'library' ? libraryData[trackIndex] : resultsData[trackIndex];
     loadPlaylistsForSelection();
     document.getElementById('addToPlaylistModal').classList.add('active');
 }

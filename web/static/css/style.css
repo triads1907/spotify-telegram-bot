@@ -522,6 +522,19 @@ body {
     color: var(--spotify-white);
 }
 
+.section-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: var(--spotify-white);
+}
+
+.library-section {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--spotify-gray);
+}
+
 .username {
     font-size: 14px;
     font-weight: 700;

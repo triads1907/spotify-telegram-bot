@@ -437,6 +437,19 @@ class DatabaseManager:
             
             return None
 
+    async def get_library_tracks(self, limit: int = 50) -> List[Track]:
+        """Получить все треки, которые есть в Telegram Storage (библиотека)"""
+        async with self.async_session() as session:
+            # Получаем треки, для которых есть запись в TelegramFile
+            # Сортируем по дате загрузки (новые сверху)
+            result = await session.execute(
+                select(Track)
+                .join(TelegramFile, Track.id == TelegramFile.track_id)
+                .order_by(TelegramFile.uploaded_at.desc())
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+
     # ========== АУТЕНТИФИКАЦИЯ (WEB) ==========
 
     async def create_auth_token(self, user_id: int, token: str, expires_in_seconds: Optional[int] = None) -> AuthToken:

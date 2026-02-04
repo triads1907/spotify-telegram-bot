@@ -128,6 +128,32 @@ def search():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/library', methods=['GET'])
+def get_library():
+    """Получить все треки из библиотеки (кэша)"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=50))
+        loop.close()
+        
+        tracks = []
+        for track in tracks_db:
+            tracks.append({
+                'id': track.id,
+                'name': track.name,
+                'artist': track.artist,
+                'album': track.album,
+                'image': track.image_url,
+                'spotify_url': track.spotify_url
+            })
+            
+        return jsonify({'tracks': tracks})
+        
+    except Exception as e:
+        print(f"❌ Error in get_library: {e}")
+        return jsonify({'error': str(e)}), 500
+
 def search_by_url(url):
     """Поиск по Spotify URL"""
     try:
