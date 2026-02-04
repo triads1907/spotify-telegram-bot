@@ -147,7 +147,7 @@ class DatabaseManager:
                 .where(PlaylistTrack.playlist_id == playlist_id)
                 .where(PlaylistTrack.track_id == track_id)
             )
-            existing = result.scalar_one_or_none()
+            existing = result.scalars().first()
             
             if existing:
                 return False  # Трек уже в плейлисте
@@ -158,7 +158,7 @@ class DatabaseManager:
                 .where(PlaylistTrack.playlist_id == playlist_id)
                 .order_by(PlaylistTrack.position.desc())
             )
-            max_position = result.scalar_one_or_none()
+            max_position = result.scalars().first()
             new_position = (max_position or 0) + 1
             
             # Добавляем трек
@@ -389,7 +389,7 @@ class DatabaseManager:
                 .where(TrackCache.file_format == file_format)
                 .where(TrackCache.quality == quality)
             )
-            cache_entry = result.scalar_one_or_none()
+            cache_entry = result.scalars().first()
             
             if cache_entry:
                 cache_entry.telegram_file_id = telegram_file_id
@@ -423,7 +423,7 @@ class DatabaseManager:
                 .where(TrackCache.file_format == file_format)
                 .where(TrackCache.quality == quality)
             )
-            cache_entry = result.scalar_one_or_none()
+            cache_entry = result.scalars().first()
             
             if cache_entry:
                 # Проверяем, не устарел ли кэш (7 дней)
@@ -443,8 +443,8 @@ class DatabaseManager:
         """Создать токен для веб-авторизации (постоянный или временный)"""
         async with self.async_session() as session:
             # Сначала проверяем, есть ли уже токен у этого пользователя
-            result = await session.execute(select(AuthToken).where(AuthToken.user_id == user_id))
-            existing_token = result.scalar_one_or_none()
+            result = await session.execute(select(AuthToken).where(AuthToken.user_id == user_id).order_by(AuthToken.created_at.desc()))
+            existing_token = result.scalars().first()
             
             if existing_token:
                 return existing_token
@@ -468,7 +468,7 @@ class DatabaseManager:
             # Ищем токен, который либо не истек, либо не имеет срока годности
             query = select(AuthToken).where(AuthToken.token == token)
             result = await session.execute(query)
-            auth_token = result.scalar_one_or_none()
+            auth_token = result.scalars().first()
             
             if auth_token:
                 # Если у токена есть срок годности, проверяем его
