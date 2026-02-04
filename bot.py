@@ -225,12 +225,12 @@ def main():
             db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
         )
         
-        # Восстанавливаем БД из Telegram при старте
-        # import asyncio # Already imported at the top
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        restored = loop.run_until_complete(backup_service.restore_from_telegram())
-        loop.close()
+        # Восстанавливаем БД из Telegram при старте (синхронно)
+        # Используем отдельный event loop для восстановления
+        async def restore_db():
+            return await backup_service.restore_from_telegram()
+        
+        restored = asyncio.run(restore_db())
         
         if restored:
             print("✅ Database restored from Telegram backup")
@@ -238,11 +238,10 @@ def main():
             print("ℹ️ No backup found, using fresh database")
         
         # Запускаем периодический backup в фоновом режиме
-        # import threading # Already imported at the top
         def run_periodic_backup():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(backup_service.start_periodic_backup(interval=300))
+            async def backup_loop():
+                await backup_service.start_periodic_backup(interval=300)
+            asyncio.run(backup_loop())
         
         backup_thread = threading.Thread(target=run_periodic_backup, daemon=True)
         backup_thread.start()
