@@ -50,19 +50,28 @@ def get_backup_service():
 db_initialized = False
 
 def ensure_db_initialized():
-    """Ленивая инициализация БД при первом запросе"""
+    """Ленивая инициализация БД при первом запросе с восстановлением из Telegram"""
     global db_initialized
     if not db_initialized:
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            
+            print("📦 Web App: Checking for database restoration...")
+            # Попытка восстановления из Telegram перед инициализацией
+            backup = get_backup_service()
+            loop.run_until_complete(backup.restore_from_telegram())
+            
+            # Инициализация (создание таблиц, если не созданы)
             loop.run_until_complete(db.init_db())
             loop.close()
             db_initialized = True
-            print("✅ Web App: Database initialized")
+            print("✅ Web App: Database ready")
         except Exception as e:
             print(f"⚠️  Web App: Database init warning: {e}")
-            # Не падаем, просто логируем - БД может быть уже инициализирована ботом
+            import traceback
+            traceback.print_exc()
+            db_initialized = True # Помечаем как инициализированную, чтобы не входить в цикл при ошибках
 
 @app.before_request
 def before_request():

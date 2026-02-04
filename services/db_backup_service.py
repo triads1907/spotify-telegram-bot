@@ -33,26 +33,22 @@ class DatabaseBackupService:
             True если БД успешно восстановлена, False если backup не найден
         """
         try:
-            print("🔍 Checking for database backup in Telegram...")
-            
-            # Проверяем, существует ли уже локальная БД
-            if os.path.exists(self.db_path):
-                file_size = os.path.getsize(self.db_path)
-                print(f"ℹ️  Local database exists ({file_size} bytes)")
-                
-                # Если БД пустая или очень маленькая, попробуем восстановить
-                if file_size < 1024:  # Меньше 1KB
-                    print("⚠️  Local database is too small, attempting restore...")
-                else:
-                    print("✅ Using existing local database")
-                    return True
-            
-            # Ищем последний backup в Telegram
+            print("🔍 Checking for latest backup in Telegram pinned message...")
             backup_info = await self._find_latest_backup()
             
             if not backup_info:
-                print("ℹ️  No backup found in Telegram, will create new database")
+                print("ℹ️  No backup found in Telegram, using local database (if exists)")
                 return False
+            
+            # Если локальный файл существует, проверим, нужно ли его заменять
+            if os.path.exists(self.db_path):
+                file_size = os.path.getsize(self.db_path)
+                # Если файл подозрительно маленький (свежесозданный) - заменяем без вопросов
+                if file_size < 32768: # 32KB - это примерно пустая БД со схемой
+                    print(f"⚠️  Local database is too small ({file_size} bytes), overwriting with backup...")
+                else:
+                    # В будущем здесь можно добавить сравнение дат или хешей
+                    print(f"ℹ️  Local database exists ({file_size} bytes). Applying backup to be safe.")
             
             # Скачиваем backup
             print(f"📥 Downloading database backup from Telegram...")

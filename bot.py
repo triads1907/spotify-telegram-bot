@@ -61,45 +61,52 @@ from handlers.menu import handle_menu_buttons
 
 async def post_init(application: Application) -> None:
     """Функция для инициализации после запуска бота (восстановление БД и backup)."""
-    # Инициализация базы данных
-    db = DatabaseManager()
-    await db.init_db()
-    application.bot_data['db'] = db
-    
-    # Инициализация Spotify сервиса (БЕЗ API)
-    spotify = SpotifyService()
-    application.bot_data['spotify'] = spotify
-    
-    # Инициализация сервиса скачивания
-    download_service = DownloadService()
-    application.bot_data['download_service'] = download_service
-    
-    logger.info("✅ Бот инициализирован")
-
     try:
-        print("📦 Initializing Database Backup Service (Inside post_init)...")
+        print("📦 Phase 1: Database Restoration...")
         storage_service = TelegramStorageService()
+        db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+        
         backup_service = DatabaseBackupService(
             storage_service=storage_service,
-            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+            db_path=db_path
         )
         
-        # Восстанавливаем БД из Telegram (в текущем event loop бота)
+        # 1. Сначала пробуем восстановить БД из Telegram
+        # Это должно произойти ДО того, как db.init_db() создаст пустые таблицы
         restored = await backup_service.restore_from_telegram()
         
         if restored:
             print("✅ Database restored from Telegram backup")
         else:
-            print("ℹ️ No backup found, using fresh database")
+            print("ℹ️ No backup found or restore skipped, will use/create local database")
         
-        # Запускаем периодический backup как фоновую задачу asyncio
+        # 2. Теперь инициализируем БД (создаем таблицы, если их нет)
+        db = DatabaseManager()
+        await db.init_db()
+        application.bot_data['db'] = db
+        
+        # 3. Инициализация остальных сервисов
+        spotify = SpotifyService()
+        application.bot_data['spotify'] = spotify
+        
+        download_service = DownloadService()
+        application.bot_data['download_service'] = download_service
+        
+        # 4. Запускаем периодический backup
         asyncio.create_task(backup_service.start_periodic_backup(interval=300))
         print("✅ Periodic database backup started (every 5 minutes)")
         
+        logger.info("✅ Бот успешно инициализирован")
+        
     except Exception as e:
-        print(f"⚠️ Warning: Could not initialize database backup: {e}")
+        print(f"❌ Critical initialization error: {e}")
         import traceback
         traceback.print_exc()
+        # Попробуем хотя бы базовую инициализацию, если это возможно
+        if 'db' not in application.bot_data:
+            db = DatabaseManager()
+            await db.init_db()
+            application.bot_data['db'] = db
 
 # Настройка логирования
 logging.basicConfig(
