@@ -17,6 +17,8 @@ from telegram.ext import (
 import config
 from database import DatabaseManager
 from services import SpotifyService, DownloadService
+from services.telegram_storage_service import TelegramStorageService
+from services.db_backup_service import DatabaseBackupService
 from handlers import (
     start_command,
     help_command,
@@ -212,6 +214,43 @@ def main():
 💡 Используйте Ctrl+C для остановки
 """)
     
+    # Инициализируем Database Backup Service
+    try:
+        print("📦 Initializing Database Backup Service...")
+        storage_service = TelegramStorageService()
+        backup_service = DatabaseBackupService(
+            storage_service=storage_service,
+            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+        )
+        
+        # Восстанавливаем БД из Telegram при старте
+        # import asyncio # Already imported at the top
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        restored = loop.run_until_complete(backup_service.restore_from_telegram())
+        loop.close()
+        
+        if restored:
+            print("✅ Database restored from Telegram backup")
+        else:
+            print("ℹ️ No backup found, using fresh database")
+        
+        # Запускаем периодический backup в фоновом режиме
+        # import threading # Already imported at the top
+        def run_periodic_backup():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(backup_service.start_periodic_backup(interval=300))
+        
+        backup_thread = threading.Thread(target=run_periodic_backup, daemon=True)
+        backup_thread.start()
+        print("✅ Periodic database backup started (every 5 minutes)")
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not initialize database backup: {e}")
+        import traceback
+        traceback.print_exc()
+    
     # Запускаем polling
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
@@ -224,3 +263,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
         print(f"\n❌ Ошибка: {e}")
+```
