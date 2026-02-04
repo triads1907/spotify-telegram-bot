@@ -18,6 +18,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (userData) {
         loadPlaylists();
     }
+
+    // Backup БД при закрытии/обновлении страницы
+    window.addEventListener('beforeunload', function (e) {
+        // Отправляем запрос на backup (используем sendBeacon для надежности)
+        const backupUrl = '/api/backup-db';
+
+        // sendBeacon гарантирует отправку даже при закрытии страницы
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(backupUrl, new Blob([JSON.stringify({})], { type: 'application/json' }));
+        } else {
+            // Fallback для старых браузеров
+            fetch(backupUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+                keepalive: true  // Важно для отправки при закрытии
+            }).catch(err => console.log('Backup request failed:', err));
+        }
+    });
 });
 
 // Auth Logic

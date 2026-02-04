@@ -25,6 +25,7 @@ db = DatabaseManager()
 
 # Telegram Storage Service будет инициализирован при первом использовании
 telegram_storage = None
+backup_service = None
 
 def get_telegram_storage():
     """Ленивая инициализация Telegram Storage Service"""
@@ -33,6 +34,17 @@ def get_telegram_storage():
         from services.telegram_storage_service import TelegramStorageService
         telegram_storage = TelegramStorageService()
     return telegram_storage
+
+def get_backup_service():
+    """Ленивая инициализация Database Backup Service"""
+    global backup_service
+    if backup_service is None:
+        from services.db_backup_service import DatabaseBackupService
+        backup_service = DatabaseBackupService(
+            storage_service=get_telegram_storage(),
+            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+        )
+    return backup_service
 
 # Флаг инициализации БД
 db_initialized = False
@@ -513,6 +525,29 @@ def stream_file(filename):
     except Exception as e:
         print(f"❌ Stream file error: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/backup-db', methods=['POST'])
+def backup_database():
+    """Создать backup БД (вызывается при закрытии/обновлении страницы)"""
+    try:
+        backup_svc = get_backup_service()
+        
+        # Создаем backup асинхронно
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        success = loop.run_until_complete(backup_svc.backup_to_telegram())
+        loop.close()
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Database backup created'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create backup'}), 500
+            
+    except Exception as e:
+        print(f"❌ Backup error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Инициализация БД перед запуском
