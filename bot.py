@@ -2,6 +2,8 @@
 Главный файл Music Download бота
 """
 import logging
+import asyncio
+import threading
 import re
 from telegram import Update
 from telegram.ext import (
@@ -263,4 +265,3 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
         print(f"\n❌ Ошибка: {e}")
-```
