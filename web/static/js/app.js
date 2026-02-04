@@ -290,8 +290,8 @@ async function playFromYouTube(track) {
 function updatePlayerUI(track) {
     const playerTrackInfo = document.querySelector('.player-track-info');
     playerTrackInfo.querySelector('.track-image').innerHTML = track.image ?
-        `< img src = "${track.image}" style = "width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" /> ` :
-        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg > `;
+        `<img src="${track.image}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" />` :
+        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>`;
     playerTrackInfo.querySelector('.track-name').textContent = track.name;
     playerTrackInfo.querySelector('.track-artist').textContent = track.artist;
 }
@@ -346,8 +346,8 @@ function formatTime(seconds) {
 
 function updatePlayButton(isPlaying) {
     document.getElementById('playBtn').innerHTML = isPlaying ?
-        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg > ` :
-        `< svg viewBox = "0 0 24 24" fill = "currentColor" > <path d="M8 5v14l11-7z" /></svg > `;
+        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>` :
+        `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>`;
 }
 
 // Playlists Logic
