@@ -437,15 +437,23 @@ class DatabaseManager:
             
             return None
 
-    async def get_library_tracks(self, limit: int = 50) -> List[Track]:
-        """Получить все треки, которые есть в кэше системы (библиотека)"""
+    async def get_library_tracks(self, limit: int = 100) -> List[Track]:
+        """Получить все треки, которые есть в системе (библиотека канала)"""
+        from sqlalchemy import or_
         async with self.async_session() as session:
-            # Получаем треки, для которых есть запись в кэше
-            # Сортируем по дате появления в кэше (новые сверху)
+            # Выбираем треки, которые есть либо в кэше, либо в хранилище Telegram
+            # Используем outerjoin для объединения всех возможных связей
             result = await session.execute(
                 select(Track)
-                .join(TrackCache, Track.id == TrackCache.track_id)
-                .order_by(TrackCache.created_at.desc())
+                .outerjoin(TrackCache, Track.id == TrackCache.track_id)
+                .outerjoin(TelegramFile, Track.id == TelegramFile.track_id)
+                .where(or_(
+                    Track.telegram_file_id != None,
+                    TrackCache.id != None,
+                    TelegramFile.track_id != None
+                ))
+                .distinct()
+                .order_by(Track.created_at.desc())
                 .limit(limit)
             )
             return list(result.scalars().all())
