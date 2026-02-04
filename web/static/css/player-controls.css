@@ -1,0 +1,40 @@
+/* Player Controls */
+.player-controls button {
+    background: none;
+    border: none;
+    color: var(--spotify-white);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-controls button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.05);
+}
+
+.player-controls button.inactive {
+    opacity: 0.4;
+}
+
+.player-controls button.inactive:hover {
+    opacity: 0.6;
+}
+
+.player-controls button:not(.inactive):hover {
+    color: var(--spotify-green);
+}
+
+.player-controls button svg {
+    width: 20px;
+    height: 20px;
+}
+
+.player-controls .play-btn svg {
+    width: 28px;
+    height: 28px;
+}

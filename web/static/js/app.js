@@ -7,6 +7,12 @@ let libraryData = [];
 let userData = JSON.parse(localStorage.getItem('userData') || 'null');
 const audioPlayer = document.getElementById('audioPlayer');
 
+// Player state variables
+let isRepeatEnabled = false;
+let isShuffleEnabled = false;
+let currentPlaylist = [];
+let currentTrackIndex = -1;
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
     checkAuthToken();
@@ -218,11 +224,23 @@ function renderTrackCard(track, index, type = 'search') {
 }
 
 // Playback Logic
-async function playTrack(button) {
-    const card = button.closest('.track-card');
-    const index = parseInt(card.dataset.index);
-    const type = card.dataset.type;
-    const track = type === 'library' ? libraryData[index] : resultsData[index];
+async function playTrack(button, trackData = null) {
+    let track, index, type;
+
+    if (trackData) {
+        // Called from playNext/playPrevious
+        track = trackData;
+    } else {
+        // Called from UI button click
+        const card = button.closest('.track-card');
+        index = parseInt(card.dataset.index);
+        type = card.dataset.type;
+        track = type === 'library' ? libraryData[index] : resultsData[index];
+
+        // Set current playlist and index
+        currentPlaylist = type === 'library' ? libraryData : resultsData;
+        currentTrackIndex = index;
+    }
 
     if (!track) return;
 
@@ -334,7 +352,22 @@ function initializePlayer() {
         audioPlayer.currentTime = time;
     });
 
-    audioPlayer.addEventListener('ended', () => updatePlayButton(false));
+    audioPlayer.addEventListener('ended', () => {
+        if (isRepeatEnabled) {
+            // Repeat current track
+            audioPlayer.currentTime = 0;
+            audioPlayer.play();
+        } else {
+            // Play next track
+            playNext();
+        }
+    });
+
+    // Add event listeners for new controls
+    document.getElementById('shuffleBtn').addEventListener('click', toggleShuffle);
+    document.getElementById('repeatBtn').addEventListener('click', toggleRepeat);
+    document.getElementById('prevBtn').addEventListener('click', playPrevious);
+    document.getElementById('nextBtn').addEventListener('click', playNext);
 }
 
 function formatTime(seconds) {
@@ -348,6 +381,62 @@ function updatePlayButton(isPlaying) {
     document.getElementById('playBtn').innerHTML = isPlaying ?
         `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>` :
         `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>`;
+}
+
+// Player control functions
+function toggleRepeat() {
+    isRepeatEnabled = !isRepeatEnabled;
+    const repeatBtn = document.getElementById('repeatBtn');
+    if (isRepeatEnabled) {
+        repeatBtn.classList.remove('inactive');
+        showNotification('Repeat enabled', 'success');
+    } else {
+        repeatBtn.classList.add('inactive');
+        showNotification('Repeat disabled', 'info');
+    }
+}
+
+function toggleShuffle() {
+    isShuffleEnabled = !isShuffleEnabled;
+    const shuffleBtn = document.getElementById('shuffleBtn');
+    if (isShuffleEnabled) {
+        shuffleBtn.classList.remove('inactive');
+        showNotification('Shuffle enabled', 'success');
+    } else {
+        shuffleBtn.classList.add('inactive');
+        showNotification('Shuffle disabled', 'info');
+    }
+}
+
+function playNext() {
+    if (currentPlaylist.length === 0) {
+        showNotification('No playlist active', 'info');
+        return;
+    }
+
+    if (isShuffleEnabled) {
+        // Random next track
+        const randomIndex = Math.floor(Math.random() * currentPlaylist.length);
+        currentTrackIndex = randomIndex;
+    } else {
+        // Sequential next track
+        currentTrackIndex = (currentTrackIndex + 1) % currentPlaylist.length;
+    }
+
+    const nextTrack = currentPlaylist[currentTrackIndex];
+    playTrack(null, nextTrack);
+}
+
+function playPrevious() {
+    if (currentPlaylist.length === 0) {
+        showNotification('No playlist active', 'info');
+        return;
+    }
+
+    // Always go to previous track sequentially
+    currentTrackIndex = (currentTrackIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
+    const prevTrack = currentPlaylist[currentTrackIndex];
+    playTrack(null, prevTrack);
 }
 
 // Playlists Logic
