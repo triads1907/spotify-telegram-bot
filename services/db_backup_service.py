@@ -96,6 +96,13 @@ class DatabaseBackupService:
             if result and result.get('file_id'):
                 self.backup_file_id = result['file_id']
                 print(f"✅ Database backup created: {result['file_id'][:20]}...")
+                
+                # Закрепляем сообщение, чтобы бот всегда мог его найти
+                if result.get('message_id'):
+                    pin_success = self.storage.pin_message(result['message_id'])
+                    if pin_success:
+                        print(f"📌 Backup message pinned: {result['message_id']}")
+                
                 return True
             else:
                 print("❌ Failed to create database backup")
@@ -145,24 +152,24 @@ class DatabaseBackupService:
             Dict с информацией о backup или None
         """
         try:
-            # Получаем последние сообщения из канала
-            result = await self._get_channel_messages()
+            # Получаем закрепленное сообщение из канала
+            message = self.storage.get_pinned_message()
             
-            if not result or not result.get('messages'):
+            if not message or not message.get('document'):
+                # Если закрепленного сообщения нет, попробуем поискать в последних сообщениях (но это менее надежно)
+                print("ℹ️  No pinned message found in channel")
                 return None
             
-            # Ищем последний файл БД
-            for message in result['messages']:
-                if message.get('document'):
-                    doc = message['document']
-                    # Проверяем, что это файл БД
-                    if doc.get('file_name', '').endswith('.db'):
-                        return {
-                            'file_id': doc['file_id'],
-                            'file_name': doc.get('file_name'),
-                            'file_size': doc.get('file_size'),
-                            'date': message.get('date')
-                        }
+            doc = message['document']
+            # Проверяем, что это файл БД
+            if doc.get('file_name', '').endswith('.db'):
+                print(f"✅ Found backup in pinned message: {doc.get('file_name')}")
+                return {
+                    'file_id': doc['file_id'],
+                    'file_name': doc.get('file_name'),
+                    'file_size': doc.get('file_size'),
+                    'date': message.get('date')
+                }
             
             return None
             
@@ -203,26 +210,6 @@ class DatabaseBackupService:
             print(f"❌ Error downloading backup: {e}")
             return False
     
-    async def _get_channel_messages(self, limit: int = 10) -> Optional[dict]:
-        """
-        Получить последние сообщения из канала
-        
-        Args:
-            limit: Количество сообщений
-            
-        Returns:
-            Dict с сообщениями или None
-        """
-        try:
-            # Используем getUpdates для получения сообщений
-            # Примечание: это упрощенная версия, в production лучше использовать
-            # telegram.Bot.get_chat_history или аналогичный метод
-            
-            # Для простоты, будем хранить file_id последнего backup в памяти
-            # и использовать его при восстановлении
-            
-            return None
-            
         except Exception as e:
-            print(f"❌ Error getting channel messages: {e}")
-            return None
+            print(f"❌ Error downloading backup: {e}")
+            return False

@@ -161,16 +161,19 @@ class TelegramStorageService:
             if response.status_code == 200:
                 result = response.json()
                 if result.get('ok') and result.get('result', {}).get('document'):
-                    document = result['result']['document']
+                    message = result['result']
+                    document = message['document']
                     file_id = document['file_id']
                     file_name = document.get('file_name', '')
+                    message_id = message.get('message_id')
                     
-                    print(f"✅ Uploaded document to Telegram: {file_name}")
+                    print(f"✅ Uploaded document to Telegram: {file_name}, message_id={message_id}")
                     
                     return {
                         'file_id': file_id,
                         'file_name': file_name,
-                        'file_size': file_size
+                        'file_size': file_size,
+                        'message_id': message_id
                     }
             
             print(f"❌ Failed to upload document to Telegram: {response.text}")
@@ -222,3 +225,37 @@ class TelegramStorageService:
             import traceback
             traceback.print_exc()
             return False
+
+    def pin_message(self, message_id: int) -> bool:
+        """Закрепить сообщение в канале"""
+        try:
+            response = httpx.post(
+                f"{self.base_url}/pinChatMessage",
+                data={
+                    'chat_id': self.channel_id,
+                    'message_id': message_id,
+                    'disable_notification': True
+                },
+                timeout=30.0
+            )
+            return response.status_code == 200 and response.json().get('ok', False)
+        except Exception as e:
+            print(f"❌ Error pinning message: {e}")
+            return False
+
+    def get_pinned_message(self) -> Optional[Dict]:
+        """Получить закрепленное сообщение в канале"""
+        try:
+            response = httpx.get(
+                f"{self.base_url}/getChat",
+                params={'chat_id': self.channel_id},
+                timeout=30.0
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('ok') and result.get('result', {}).get('pinned_message'):
+                    return result['result']['pinned_message']
+            return None
+        except Exception as e:
+            print(f"❌ Error getting pinned message: {e}")
+            return None
