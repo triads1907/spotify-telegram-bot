@@ -31,9 +31,7 @@ def get_telegram_storage():
     global telegram_storage
     if telegram_storage is None:
         from services.telegram_storage_service import TelegramStorageService
-        from telegram import Bot
-        telegram_bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-        telegram_storage = TelegramStorageService(bot=telegram_bot)
+        telegram_storage = TelegramStorageService()
     return telegram_storage
 
 # Флаг инициализации БД
@@ -424,9 +422,7 @@ def prepare_stream():
             print(f"✅ Found in cache: {track_id}")
             
             # Получаем прямую ссылку из Telegram
-            file_url = loop.run_until_complete(
-                get_telegram_storage().get_file_url(telegram_file.file_id)
-            )
+            file_url = get_telegram_storage().get_file_url(telegram_file.file_id)
             
             if file_url:
                 loop.close()
@@ -457,9 +453,7 @@ def prepare_stream():
         # 3. Загружаем в Telegram Storage
         print(f"📤 Uploading to Telegram Storage: {os.path.basename(file_path)}")
         caption = f"🎵 {artist} - {track_name}"
-        upload_result = loop.run_until_complete(
-            get_telegram_storage().upload_file(file_path, caption)
-        )
+        upload_result = get_telegram_storage().upload_file(file_path, caption)
         
         if not upload_result or not upload_result.get('file_id'):
             loop.close()
@@ -478,9 +472,7 @@ def prepare_stream():
         )
         
         # 5. Получаем прямую ссылку
-        file_url = loop.run_until_complete(
-            get_telegram_storage().get_file_url(upload_result['file_id'])
-        )
+        file_url = get_telegram_storage().get_file_url(upload_result['file_id'])
         
         loop.close()
         
