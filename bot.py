@@ -59,16 +59,8 @@ from handlers.settings import (
 # Обработчик кнопок меню
 from handlers.menu import handle_menu_buttons
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-
-async def post_init(application: Application):
-    """Инициализация после запуска бота"""
+async def post_init(application: Application) -> None:
+    """Функция для инициализации после запуска бота (восстановление БД и backup)."""
     # Инициализация базы данных
     db = DatabaseManager()
     await db.init_db()
@@ -83,6 +75,38 @@ async def post_init(application: Application):
     application.bot_data['download_service'] = download_service
     
     logger.info("✅ Бот инициализирован")
+
+    try:
+        print("📦 Initializing Database Backup Service (Inside post_init)...")
+        storage_service = TelegramStorageService()
+        backup_service = DatabaseBackupService(
+            storage_service=storage_service,
+            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+        )
+        
+        # Восстанавливаем БД из Telegram (в текущем event loop бота)
+        restored = await backup_service.restore_from_telegram()
+        
+        if restored:
+            print("✅ Database restored from Telegram backup")
+        else:
+            print("ℹ️ No backup found, using fresh database")
+        
+        # Запускаем периодический backup как фоновую задачу asyncio
+        asyncio.create_task(backup_service.start_periodic_backup(interval=300))
+        print("✅ Periodic database backup started (every 5 minutes)")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Could not initialize database backup: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 
 async def post_shutdown(application: Application):
@@ -215,42 +239,6 @@ def main():
 
 💡 Используйте Ctrl+C для остановки
 """)
-    
-    # Инициализируем Database Backup Service
-    try:
-        print("📦 Initializing Database Backup Service...")
-        storage_service = TelegramStorageService()
-        backup_service = DatabaseBackupService(
-            storage_service=storage_service,
-            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
-        )
-        
-        # Восстанавливаем БД из Telegram при старте (синхронно)
-        # Используем отдельный event loop для восстановления
-        async def restore_db():
-            return await backup_service.restore_from_telegram()
-        
-        restored = asyncio.run(restore_db())
-        
-        if restored:
-            print("✅ Database restored from Telegram backup")
-        else:
-            print("ℹ️ No backup found, using fresh database")
-        
-        # Запускаем периодический backup в фоновом режиме
-        def run_periodic_backup():
-            async def backup_loop():
-                await backup_service.start_periodic_backup(interval=300)
-            asyncio.run(backup_loop())
-        
-        backup_thread = threading.Thread(target=run_periodic_backup, daemon=True)
-        backup_thread.start()
-        print("✅ Periodic database backup started (every 5 minutes)")
-        
-    except Exception as e:
-        print(f"⚠️  Warning: Could not initialize database backup: {e}")
-        import traceback
-        traceback.print_exc()
     
     # Запускаем polling
     application.run_polling(allowed_updates=Update.ALL_TYPES)
