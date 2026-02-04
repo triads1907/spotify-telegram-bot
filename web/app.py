@@ -13,9 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from services.spotify_service import SpotifyService
 from services.download_service import DownloadService
-from services.telegram_storage_service import TelegramStorageService
 from database.db_manager import DatabaseManager
-from telegram import Bot
 
 app = Flask(__name__)
 CORS(app)
@@ -25,9 +23,18 @@ spotify_service = SpotifyService()
 download_service = DownloadService()
 db = DatabaseManager()
 
-# Инициализация Telegram Bot и Storage Service
-telegram_bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-telegram_storage = TelegramStorageService(bot=telegram_bot)
+# Telegram Storage Service будет инициализирован при первом использовании
+telegram_storage = None
+
+def get_telegram_storage():
+    """Ленивая инициализация Telegram Storage Service"""
+    global telegram_storage
+    if telegram_storage is None:
+        from services.telegram_storage_service import TelegramStorageService
+        from telegram import Bot
+        telegram_bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+        telegram_storage = TelegramStorageService(bot=telegram_bot)
+    return telegram_storage
 
 # Флаг инициализации БД
 db_initialized = False
@@ -418,7 +425,7 @@ def prepare_stream():
             
             # Получаем прямую ссылку из Telegram
             file_url = loop.run_until_complete(
-                telegram_storage.get_file_url(telegram_file.file_id)
+                get_telegram_storage().get_file_url(telegram_file.file_id)
             )
             
             if file_url:
@@ -451,7 +458,7 @@ def prepare_stream():
         print(f"📤 Uploading to Telegram Storage: {os.path.basename(file_path)}")
         caption = f"🎵 {artist} - {track_name}"
         upload_result = loop.run_until_complete(
-            telegram_storage.upload_file(file_path, caption)
+            get_telegram_storage().upload_file(file_path, caption)
         )
         
         if not upload_result or not upload_result.get('file_id'):
@@ -472,7 +479,7 @@ def prepare_stream():
         
         # 5. Получаем прямую ссылку
         file_url = loop.run_until_complete(
-            telegram_storage.get_file_url(upload_result['file_id'])
+            get_telegram_storage().get_file_url(upload_result['file_id'])
         )
         
         loop.close()
