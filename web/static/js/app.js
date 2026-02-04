@@ -268,6 +268,9 @@ function updatePlayerUI(track) {
 function initializePlayer() {
     const playBtn = document.getElementById('playBtn');
     const volumeSlider = document.querySelector('.volume-slider');
+    const progressSlider = document.getElementById('progressSlider');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalTimeEl = document.getElementById('totalTime');
 
     playBtn.addEventListener('click', () => {
         if (audioPlayer.paused) {
@@ -280,7 +283,34 @@ function initializePlayer() {
     });
 
     volumeSlider.addEventListener('input', (e) => audioPlayer.volume = e.target.value / 100);
+
+    // Обновление прогресса
+    audioPlayer.addEventListener('timeupdate', () => {
+        if (!audioPlayer.duration) return;
+        const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+        progressSlider.value = progress;
+        currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+    });
+
+    // Установка общей длительности
+    audioPlayer.addEventListener('loadedmetadata', () => {
+        totalTimeEl.textContent = formatTime(audioPlayer.duration);
+    });
+
+    // Перемотка
+    progressSlider.addEventListener('input', (e) => {
+        const time = (e.target.value / 100) * audioPlayer.duration;
+        audioPlayer.currentTime = time;
+    });
+
     audioPlayer.addEventListener('ended', () => updatePlayButton(false));
+}
+
+function formatTime(seconds) {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
 function updatePlayButton(isPlaying) {
