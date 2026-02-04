@@ -537,6 +537,12 @@ def prepare_stream():
         # 5. Получаем прямую ссылку
         file_url = get_telegram_storage().get_file_url(upload_result['file_id'])
         
+        # 6. Очистка временного файла
+        try:
+            download_service.cleanup_file(file_path)
+        except:
+            pass
+            
         loop.close()
         
         if file_url:
@@ -547,13 +553,17 @@ def prepare_stream():
                 'title': f"{artist} - {track_name}"
             })
         else:
-            return jsonify({'error': 'Failed to get stream URL'}), 500
+            return jsonify({'error': 'Failed to get stream URL after upload'}), 500
             
     except Exception as e:
         print(f"❌ Prepare stream error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        # Возвращаем детали ошибки для диагностики
+        return jsonify({
+            'error': f"Internal Server Error: {str(e)}",
+            'type': type(e).__name__
+        }), 500
 
 @app.route('/api/stream-file/<path:filename>')
 def stream_file(filename):

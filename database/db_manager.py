@@ -16,7 +16,13 @@ class DatabaseManager:
     
     def __init__(self, database_url: str = None):
         self.database_url = database_url or config.DATABASE_URL
-        self.engine = create_async_engine(self.database_url, echo=False)
+        # Добавляем таймаут для SQLite чтобы избежать "database is locked" в многопроцессной среде
+        connect_args = {"timeout": 20} if "sqlite" in self.database_url else {}
+        self.engine = create_async_engine(
+            self.database_url, 
+            echo=False,
+            connect_args=connect_args
+        )
         self.async_session = async_sessionmaker(
             self.engine, 
             class_=AsyncSession, 
@@ -26,8 +32,11 @@ class DatabaseManager:
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         async with self.engine.begin() as conn:
+            # Включаем WAL mode для лучшей параллельности в SQLite
+            if "sqlite" in self.database_url:
+                await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
             await conn.run_sync(Base.metadata.create_all)
-        print("✅ База данных инициализирована")
+        print("✅ База данных инициализирована (WAL mode enabled)")
     
     async def close(self):
         """Закрытие соединения с БД"""
