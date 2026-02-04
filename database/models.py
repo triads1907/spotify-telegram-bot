@@ -38,6 +38,7 @@ class User(Base):
     playlists: Mapped[List["Playlist"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     download_history: Mapped[List["DownloadHistory"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     favorites: Mapped[List["Favorite"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    auth_tokens: Mapped[List["AuthToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username})>"
@@ -86,6 +87,7 @@ class Track(Base):
     playlist_tracks: Mapped[List["PlaylistTrack"]] = relationship(back_populates="track", cascade="all, delete-orphan")
     download_history: Mapped[List["DownloadHistory"]] = relationship(back_populates="track", cascade="all, delete-orphan")
     favorites: Mapped[List["Favorite"]] = relationship(back_populates="track", cascade="all, delete-orphan")
+    telegram_files: Mapped[List["TelegramFile"]] = relationship(back_populates="track", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Track(id={self.id}, name={self.name}, artist={self.artist})>"
@@ -188,8 +190,31 @@ class AuthToken(Base):
     
     token: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('users.id', ondelete='CASCADE'))
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Связь с пользователем
+    user: Mapped["User"] = relationship("User", back_populates="auth_tokens")
     
     def __repr__(self):
         return f"<AuthToken(user_id={self.user_id}, expires={self.expires_at})>"
+
+class TelegramFile(Base):
+    """Модель для кеширования файлов в Telegram Storage"""
+    __tablename__ = 'telegram_files'
+    
+    track_id: Mapped[str] = mapped_column(String(255), ForeignKey('tracks.id', ondelete='CASCADE'), primary_key=True)
+    file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    telegram_file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Метаданные трека для удобства
+    artist: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    track_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Связи
+    track: Mapped["Track"] = relationship(back_populates="telegram_files")
+
+    def __repr__(self):
+        return f"<TelegramFile(track_id={self.track_id}, file_id={self.file_id})>"

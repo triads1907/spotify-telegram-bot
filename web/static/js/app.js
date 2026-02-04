@@ -195,7 +195,7 @@ async function playTrack(button) {
 
 async function playFromYouTube(track) {
     try {
-        showNotification('Preparing track for playback...', 'info');
+        showNotification('Preparing track...', 'info');
 
         const response = await fetch('/api/prepare-stream', {
             method: 'POST',
@@ -203,6 +203,7 @@ async function playFromYouTube(track) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                id: track.id,
                 artist: track.artist,
                 name: track.name
             })
@@ -210,17 +211,23 @@ async function playFromYouTube(track) {
 
         const data = await response.json();
 
-        if (response.ok && data.filename) {
+        if (response.ok && data.stream_url) {
             currentTrack = track;
-            // Используем локальный файл для стриминга
-            audioPlayer.src = `/api/stream-file/${data.filename}`;
+            // Используем прямую ссылку из Telegram
+            audioPlayer.src = data.stream_url;
             audioPlayer.play().catch(err => {
                 console.error('Play error:', err);
                 showNotification('Could not play track', 'error');
             });
             updatePlayerUI(track);
             updatePlayButton(true);
-            showNotification('Now playing!', 'success');
+
+            // Показываем статус кеширования
+            if (data.cached) {
+                showNotification('Playing from cache!', 'success');
+            } else {
+                showNotification('Now playing!', 'success');
+            }
         } else {
             showNotification(data.error || 'Could not load track', 'error');
         }

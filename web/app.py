@@ -1,17 +1,21 @@
 """
 Flask Web Application для музыкального бота
 """
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import sys
+import asyncio
 import os
+import sys
 
-# Добавляем корневую директорию в путь
+# Добавляем корневую директорию в путь для импорта модулей
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services import SpotifyService, DownloadService
-from database import DatabaseManager
-import asyncio
+import config
+from services.spotify_service import SpotifyService
+from services.download_service import DownloadService
+from services.telegram_storage_service import TelegramStorageService
+from database.db_manager import DatabaseManager
+from telegram import Bot
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +24,10 @@ CORS(app)
 spotify_service = SpotifyService()
 download_service = DownloadService()
 db = DatabaseManager()
+
+# Инициализация Telegram Bot и Storage Service
+telegram_bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+telegram_storage = TelegramStorageService(bot=telegram_bot)
 
 # Флаг инициализации БД
 db_initialized = False
@@ -382,49 +390,112 @@ def get_playlist_tracks(playlist_id):
 
 @app.route('/api/prepare-stream', methods=['POST'])
 def prepare_stream():
-    """Скачать трек для стриминга"""
+    """Подготовить трек для стриминга через Telegram Storage"""
     try:
         data = request.json
         artist = data.get('artist', '')
         track_name = data.get('name', '')
-        quality = data.get('quality', '192')  # Для стриминга используем среднее качество
+        track_id = data.get('id', '')
         
         if not artist or not track_name:
             return jsonify({'error': 'Artist and track name required'}), 400
         
-        # Скачиваем трек
+        # Генерируем уникальный track_id если не передан
+        if not track_id:
+            import hashlib
+            unique_string = f"{artist}_{track_name}".lower()
+            track_id = f"web_{hashlib.md5(unique_string.encode()).hexdigest()[:16]}"
+        
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
+        # 1. Проверяем кеш в БД
+        telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
+        
+        if telegram_file:
+            # Файл уже в Telegram Storage!
+            print(f"✅ Found in cache: {track_id}")
+            
+            # Получаем прямую ссылку из Telegram
+            file_url = loop.run_until_complete(
+                telegram_storage.get_file_url(telegram_file.file_id)
+            )
+            
+            if file_url:
+                loop.close()
+                return jsonify({
+                    'success': True,
+                    'stream_url': file_url,
+                    'cached': True,
+                    'title': f"{artist} - {track_name}"
+                })
+        
+        # 2. Файла нет в кеше - скачиваем
+        print(f"📥 Downloading: {artist} - {track_name}")
         result = loop.run_until_complete(
             download_service.search_and_download(
                 artist,
                 track_name,
-                quality,
-                'mp3'  # Всегда MP3 для стриминга (меньше размер)
+                '192',  # Среднее качество для стриминга
+                'mp3'
             )
         )
+        
+        if not result or not result.get('file_path') or not os.path.exists(result['file_path']):
+            loop.close()
+            return jsonify({'error': 'Failed to download track'}), 500
+        
+        file_path = result['file_path']
+        
+        # 3. Загружаем в Telegram Storage
+        print(f"📤 Uploading to Telegram Storage: {os.path.basename(file_path)}")
+        caption = f"🎵 {artist} - {track_name}"
+        upload_result = loop.run_until_complete(
+            telegram_storage.upload_file(file_path, caption)
+        )
+        
+        if not upload_result or not upload_result.get('file_id'):
+            loop.close()
+            return jsonify({'error': 'Failed to upload to Telegram Storage'}), 500
+        
+        # 4. Сохраняем file_id в БД
+        loop.run_until_complete(
+            db.save_telegram_file(
+                track_id=track_id,
+                file_id=upload_result['file_id'],
+                file_path=upload_result.get('file_path'),
+                file_size=upload_result.get('file_size'),
+                artist=artist,
+                track_name=track_name
+            )
+        )
+        
+        # 5. Получаем прямую ссылку
+        file_url = loop.run_until_complete(
+            telegram_storage.get_file_url(upload_result['file_id'])
+        )
+        
         loop.close()
         
-        if result and result.get('file_path') and os.path.exists(result['file_path']):
-            # Возвращаем имя файла для стриминга
-            filename = os.path.basename(result['file_path'])
+        if file_url:
             return jsonify({
                 'success': True,
-                'filename': filename,
-                'duration': result.get('duration', 0),
-                'title': result.get('title', f"{artist} - {track_name}")
+                'stream_url': file_url,
+                'cached': False,
+                'title': f"{artist} - {track_name}"
             })
         else:
-            return jsonify({'error': 'Failed to download track'}), 500
+            return jsonify({'error': 'Failed to get stream URL'}), 500
             
     except Exception as e:
         print(f"❌ Prepare stream error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/stream-file/<path:filename>')
 def stream_file(filename):
-    """Стримить скачанный файл"""
+    """Стримить скачанный файл (legacy, теперь используем Telegram)"""
     try:
         # Получаем абсолютный путь к файлу
         file_path = os.path.join(download_service.download_dir, filename)

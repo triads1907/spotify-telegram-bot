@@ -7,7 +7,7 @@ from sqlalchemy import select, delete
 from typing import Optional, List
 from datetime import datetime, timedelta
 
-from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken
+from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken, TelegramFile
 import config
 
 
@@ -484,3 +484,54 @@ class DatabaseManager:
                 return user
             
             return None
+    
+    # ========== TELEGRAM STORAGE (Кеширование файлов) ==========
+    
+    async def save_telegram_file(self, track_id: str, file_id: str, file_path: str = None, 
+                                 file_size: int = None, artist: str = None, track_name: str = None) -> TelegramFile:
+        """Сохранить file_id в кеш"""
+        async with self.async_session() as session:
+            # Проверяем, есть ли уже запись
+            result = await session.execute(
+                select(TelegramFile).where(TelegramFile.track_id == track_id)
+            )
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                # Обновляем существующую запись
+                existing.file_id = file_id
+                existing.telegram_file_path = file_path
+                existing.file_size = file_size
+                existing.uploaded_at = datetime.utcnow()
+                if artist:
+                    existing.artist = artist
+                if track_name:
+                    existing.track_name = track_name
+                await session.commit()
+                return existing
+            else:
+                # Создаем новую запись
+                telegram_file = TelegramFile(
+                    track_id=track_id,
+                    file_id=file_id,
+                    telegram_file_path=file_path,
+                    file_size=file_size,
+                    artist=artist,
+                    track_name=track_name
+                )
+                session.add(telegram_file)
+                await session.commit()
+                return telegram_file
+    
+    async def get_telegram_file(self, track_id: str) -> Optional[TelegramFile]:
+        """Получить file_id из кеша"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TelegramFile).where(TelegramFile.track_id == track_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def telegram_file_exists(self, track_id: str) -> bool:
+        """Проверить, есть ли файл в Telegram Storage"""
+        telegram_file = await self.get_telegram_file(track_id)
+        return telegram_file is not None
