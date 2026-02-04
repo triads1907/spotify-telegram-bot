@@ -380,6 +380,55 @@ def get_playlist_tracks(playlist_id):
         print(f"❌ Get playlist tracks error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/stream/<track_id>', methods=['POST'])
+def get_stream_url(track_id):
+    """Получить URL для онлайн-прослушивания через YouTube"""
+    try:
+        data = request.json
+        artist = data.get('artist', '')
+        track_name = data.get('name', '')
+        
+        if not artist or not track_name:
+            return jsonify({'error': 'Artist and track name required'}), 400
+        
+        # Используем download_service для получения YouTube URL
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        youtube_url = loop.run_until_complete(
+            download_service.get_youtube_url(artist, track_name)
+        )
+        loop.close()
+        
+        if not youtube_url:
+            return jsonify({'error': 'Could not find track on YouTube'}), 404
+        
+        # Получаем прямую ссылку на аудио для стриминга
+        import yt_dlp
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                if info and 'url' in info:
+                    return jsonify({
+                        'stream_url': info['url'],
+                        'title': info.get('title', ''),
+                        'duration': info.get('duration', 0)
+                    })
+                else:
+                    return jsonify({'error': 'Could not extract stream URL'}), 500
+        except Exception as e:
+            print(f"❌ YT-DLP error: {e}")
+            return jsonify({'error': 'Failed to get stream URL'}), 500
+            
+    except Exception as e:
+        print(f"❌ Stream URL error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Инициализация БД перед запуском
     

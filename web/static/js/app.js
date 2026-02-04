@@ -169,21 +169,63 @@ function displayResults(tracks) {
 }
 
 // Playback Logic
-function playTrack(button) {
+async function playTrack(button) {
     const card = button.closest('.track-card');
     const index = parseInt(card.dataset.index);
     const track = resultsData[index];
 
     if (!track) return;
 
+    // Сначала пробуем Spotify preview (30 секунд)
     if (track.preview_url) {
         currentTrack = track;
         audioPlayer.src = track.preview_url;
-        audioPlayer.play().catch(err => showNotification('Error playing preview', 'error'));
+        audioPlayer.play().catch(err => {
+            console.error('Preview play error:', err);
+            // Если preview не сработал, пробуем YouTube
+            playFromYouTube(track);
+        });
         updatePlayerUI(track);
         updatePlayButton(true);
     } else {
-        showNotification('Preview not available. You can still download it!', 'info');
+        // Нет preview - сразу используем YouTube
+        playFromYouTube(track);
+    }
+}
+
+async function playFromYouTube(track) {
+    try {
+        showNotification('Loading full track from YouTube...', 'info');
+
+        const response = await fetch(`/api/stream/${track.id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                artist: track.artist,
+                name: track.name
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.stream_url) {
+            currentTrack = track;
+            audioPlayer.src = data.stream_url;
+            audioPlayer.play().catch(err => {
+                console.error('YouTube play error:', err);
+                showNotification('Could not play track', 'error');
+            });
+            updatePlayerUI(track);
+            updatePlayButton(true);
+            showNotification('Now playing full track!', 'success');
+        } else {
+            showNotification(data.error || 'Could not load track', 'error');
+        }
+    } catch (error) {
+        console.error('Stream error:', error);
+        showNotification('Failed to load track for streaming', 'error');
     }
 }
 
