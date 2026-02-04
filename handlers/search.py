@@ -67,9 +67,15 @@ async def handle_spotify_link(update: Update, context: ContextTypes.DEFAULT_TYPE
             await status_msg.edit_text("❌ Не удалось получить информацию о треке")
             return
         
-        # Генерируем ID для трека
-        track_id = hashlib.md5(message_text.encode()).hexdigest()[:16]
-        track_info['id'] = track_id
+        # Используем ID из track_info (Spotify ID), если он есть
+        track_id = track_info.get('id')
+        
+        # Если ID нет (не Spotify ссылка), генерируем на основе артиста и названия
+        if not track_id:
+            import hashlib
+            unique_string = f"{track_info['artist']}_{track_info['name']}".lower()
+            track_id = hashlib.md5(unique_string.encode()).hexdigest()[:16]
+            track_info['id'] = track_id
         
         # Сохраняем в БД
         if db:

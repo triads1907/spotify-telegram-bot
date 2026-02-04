@@ -429,21 +429,28 @@ def prepare_stream():
         # Генерируем уникальный track_id если не передан
         if not track_id:
             import hashlib
+            # Используем тот же алгоритм, что и в боте для консистентности
             unique_string = f"{artist}_{track_name}".lower()
-            track_id = f"web_{hashlib.md5(unique_string.encode()).hexdigest()[:16]}"
+            track_id = hashlib.md5(unique_string.encode()).hexdigest()[:16]
         
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # 1. Проверяем кеш в БД
-        telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
+        # 1. Проверяем кеш в БД (сначала общий кэш бота, затем специфичный для веб-хранилища)
+        file_id = loop.run_until_complete(db.get_cached_file_id(track_id, quality='192'))
         
-        if telegram_file:
-            # Файл уже в Telegram Storage!
+        if not file_id:
+            # Проверяем старую таблицу TelegramFile (для совместимости)
+            telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
+            if telegram_file:
+                file_id = telegram_file.file_id
+        
+        if file_id:
+            # Файл уже в Telegram!
             print(f"✅ Found in cache: {track_id}")
             
             # Получаем прямую ссылку из Telegram
-            file_url = get_telegram_storage().get_file_url(telegram_file.file_id)
+            file_url = get_telegram_storage().get_file_url(file_id)
             
             if file_url:
                 loop.close()
@@ -480,11 +487,20 @@ def prepare_stream():
             loop.close()
             return jsonify({'error': 'Failed to upload to Telegram Storage'}), 500
         
-        # 4. Сохраняем file_id в БД
+        # 4. Сохраняем в обе таблицы кэша для максимальной совместимости
+        file_id = upload_result['file_id']
+        loop.run_until_complete(
+            db.update_track_cache(
+                track_id=track_id,
+                telegram_file_id=file_id,
+                file_format='mp3',
+                quality='192'
+            )
+        )
         loop.run_until_complete(
             db.save_telegram_file(
                 track_id=track_id,
-                file_id=upload_result['file_id'],
+                file_id=file_id,
                 file_path=upload_result.get('file_path'),
                 file_size=upload_result.get('file_size'),
                 artist=artist,

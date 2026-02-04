@@ -96,7 +96,12 @@ class SpotifyService:
                 print(f"⚠️ Scraping failed: {e}")
             
             if track_name:
+                # Извлекаем ID из URL для консистентности
+                parsed = self.parse_spotify_url(clean_url)
+                track_id = parsed['id'] if parsed else None
+                
                 return {
+                    'id': track_id,
                     'name': track_name,
                     'artist': artist_name,
                     'image_url': image_url,
@@ -112,11 +117,20 @@ class SpotifyService:
     def get_track_info(self, track_id: str) -> Optional[Dict]:
         """Получить информацию о треке по ID"""
         url = f"https://open.spotify.com/track/{track_id}"
-        return self.get_track_info_from_url(url)
+        info = self.get_track_info_from_url(url)
+        if info and not info.get('id'):
+            info['id'] = track_id
+        return info
     
-    def search_tracks(self, query: str) -> list:
+    async def search_track(self, query: str) -> list:
+        """Алиас для веб-приложения"""
+        return await self.search_tracks(query)
+
+    async def search_tracks(self, query: str) -> list:
         """
         Поиск треков (недоступен без API)
+        Для работы веб-интерфейса возвращаем пустой список, 
+        так как поиск по тексту без API в Spotify затруднен.
         """
         print(f"⚠️ Поиск без Spotify API недоступен: {query}")
         return []
