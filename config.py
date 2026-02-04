@@ -23,12 +23,12 @@ DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite+aiosqlite:///{os.path.join(BAS
 WEB_APP_URL = os.getenv('WEB_APP_URL', 'http://localhost:5000')
 if WEB_APP_URL == 'http://localhost:5000':
     print("⚠️  WEB_APP_URL не установлен! Ссылки будут вести на localhost.")
+else:
+    print(f"🌐 WEB_APP_URL установлен: {WEB_APP_URL}")
 
 # Telegram Storage Channel (для хранения музыкальных файлов)
 STORAGE_CHANNEL_ID = os.getenv('STORAGE_CHANNEL_ID', '-1003748020768')
 print(f"📦 Storage Channel ID: {STORAGE_CHANNEL_ID}")
-else:
-    print(f"🌐 WEB_APP_URL установлен: {WEB_APP_URL}")
 
 # Настройки бота
 BOT_NAME = "Music Download Bot"
