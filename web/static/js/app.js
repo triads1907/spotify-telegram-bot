@@ -252,7 +252,7 @@ function displayPlaylists(playlists) {
     }
 
     grid.innerHTML = playlists.map(pl => `
-        <div class="playlist-card">
+        <div class="playlist-card" onclick="viewPlaylist(${pl.id}, '${pl.name.replace(/'/g, "\\'")}')">
             <div class="playlist-icon">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
             </div>
@@ -260,6 +260,41 @@ function displayPlaylists(playlists) {
             <div class="playlist-count">${pl.track_count} tracks</div>
         </div>
     `).join('');
+}
+
+async function viewPlaylist(playlistId, playlistName) {
+    if (!userData) return;
+
+    try {
+        const response = await fetch(`/api/playlists/${playlistId}/tracks`, {
+            headers: { 'X-User-ID': userData.id.toString() }
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            // Переключаемся на раздел поиска и показываем треки плейлиста
+            document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+            document.getElementById('searchResults').classList.add('active');
+
+            // Обновляем навигацию
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            document.querySelector('[data-page="search"]').classList.add('active');
+
+            // Показываем треки
+            displayResults(data.tracks || []);
+
+            // Обновляем заголовок поиска
+            const searchInput = document.getElementById('searchInput');
+            searchInput.value = `Playlist: ${playlistName}`;
+
+            showNotification(`Showing ${data.tracks.length} tracks from "${playlistName}"`, 'success');
+        } else {
+            showNotification(data.error || 'Failed to load playlist', 'error');
+        }
+    } catch (error) {
+        console.error('View playlist error:', error);
+        showNotification('Failed to load playlist tracks', 'error');
+    }
 }
 
 function openCreatePlaylistModal() {

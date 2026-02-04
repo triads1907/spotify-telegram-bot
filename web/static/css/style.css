@@ -647,3 +647,57 @@ textarea.text-input {
         justify-content: center;
     }
 }
+/* Playlists */
+.playlists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px 0;
+}
+
+.playlist-card {
+    background: var(--spotify-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.playlist-card:hover {
+    background: #2a2a2a;
+    transform: translateY(-4px);
+}
+
+.playlist-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, var(--spotify-green), #1ed760);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.playlist-icon svg {
+    width: 40px;
+    height: 40px;
+    color: white;
+}
+
+.playlist-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 8px;
+    word-break: break-word;
+}
+
+.playlist-count {
+    font-size: 14px;
+    color: var(--spotify-light-gray);
+}

@@ -346,6 +346,40 @@ def add_track_to_playlist():
         print(f"❌ Add track error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/playlists/<int:playlist_id>/tracks', methods=['GET'])
+def get_playlist_tracks(playlist_id):
+    """Получить треки плейлиста"""
+    try:
+        user_id = request.headers.get('X-User-ID')
+        if not user_id:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Получаем треки плейлиста
+        tracks = loop.run_until_complete(db.get_playlist_tracks(playlist_id))
+        loop.close()
+        
+        # Форматируем результат
+        result = []
+        for track in tracks:
+            result.append({
+                'id': track.id,
+                'name': track.name,
+                'artist': track.artist,
+                'album': track.album,
+                'duration': track.duration_ms // 1000 if track.duration_ms else 0,
+                'image': track.image_url,
+                'spotify_url': track.spotify_url
+            })
+        
+        return jsonify({'tracks': result})
+        
+    except Exception as e:
+        print(f"❌ Get playlist tracks error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Инициализация БД перед запуском
     
