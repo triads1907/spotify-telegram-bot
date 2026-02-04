@@ -195,9 +195,9 @@ async function playTrack(button) {
 
 async function playFromYouTube(track) {
     try {
-        showNotification('Loading full track from YouTube...', 'info');
+        showNotification('Preparing track for playback...', 'info');
 
-        const response = await fetch(`/api/stream/${track.id}`, {
+        const response = await fetch('/api/prepare-stream', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -210,16 +210,17 @@ async function playFromYouTube(track) {
 
         const data = await response.json();
 
-        if (response.ok && data.stream_url) {
+        if (response.ok && data.filename) {
             currentTrack = track;
-            audioPlayer.src = data.stream_url;
+            // Используем локальный файл для стриминга
+            audioPlayer.src = `/api/stream-file/${data.filename}`;
             audioPlayer.play().catch(err => {
-                console.error('YouTube play error:', err);
+                console.error('Play error:', err);
                 showNotification('Could not play track', 'error');
             });
             updatePlayerUI(track);
             updatePlayButton(true);
-            showNotification('Now playing full track!', 'success');
+            showNotification('Now playing!', 'success');
         } else {
             showNotification(data.error || 'Could not load track', 'error');
         }

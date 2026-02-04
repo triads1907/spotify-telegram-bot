@@ -380,53 +380,68 @@ def get_playlist_tracks(playlist_id):
         print(f"❌ Get playlist tracks error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/stream/<track_id>', methods=['POST'])
-def get_stream_url(track_id):
-    """Получить URL для онлайн-прослушивания через YouTube"""
+@app.route('/api/prepare-stream', methods=['POST'])
+def prepare_stream():
+    """Скачать трек для стриминга"""
     try:
         data = request.json
         artist = data.get('artist', '')
         track_name = data.get('name', '')
+        quality = data.get('quality', '192')  # Для стриминга используем среднее качество
         
         if not artist or not track_name:
             return jsonify({'error': 'Artist and track name required'}), 400
         
-        # Используем download_service для получения YouTube URL
+        # Скачиваем трек
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        youtube_url = loop.run_until_complete(
-            download_service.get_youtube_url(artist, track_name)
+        
+        result = loop.run_until_complete(
+            download_service.search_and_download(
+                artist,
+                track_name,
+                quality,
+                'mp3'  # Всегда MP3 для стриминга (меньше размер)
+            )
         )
         loop.close()
         
-        if not youtube_url:
-            return jsonify({'error': 'Could not find track on YouTube'}), 404
-        
-        # Получаем прямую ссылку на аудио для стриминга
-        import yt_dlp
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-        }
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-                if info and 'url' in info:
-                    return jsonify({
-                        'stream_url': info['url'],
-                        'title': info.get('title', ''),
-                        'duration': info.get('duration', 0)
-                    })
-                else:
-                    return jsonify({'error': 'Could not extract stream URL'}), 500
-        except Exception as e:
-            print(f"❌ YT-DLP error: {e}")
-            return jsonify({'error': 'Failed to get stream URL'}), 500
+        if result and result.get('file_path') and os.path.exists(result['file_path']):
+            # Возвращаем имя файла для стриминга
+            filename = os.path.basename(result['file_path'])
+            return jsonify({
+                'success': True,
+                'filename': filename,
+                'duration': result.get('duration', 0),
+                'title': result.get('title', f"{artist} - {track_name}")
+            })
+        else:
+            return jsonify({'error': 'Failed to download track'}), 500
             
     except Exception as e:
-        print(f"❌ Stream URL error: {e}")
+        print(f"❌ Prepare stream error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stream-file/<path:filename>')
+def stream_file(filename):
+    """Стримить скачанный файл"""
+    try:
+        # Получаем абсолютный путь к файлу
+        file_path = os.path.join(download_service.download_dir, filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Отправляем файл с поддержкой Range requests для HTML5 audio
+        return send_file(
+            file_path,
+            mimetype='audio/mpeg',
+            as_attachment=False,
+            conditional=True
+        )
+        
+    except Exception as e:
+        print(f"❌ Stream file error: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
