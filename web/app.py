@@ -224,7 +224,8 @@ def download():
                     download_name=f"{track_artist} - {track_name}.{file_format}"
                 )
             else:
-                return jsonify({'error': 'Download failed'}), 500
+                error_msg = result.get('error') if result else "Unknown error"
+                return jsonify({'error': f"Download failed: {error_msg}"}), 500
         
         # Иначе используем track_id
         if not track_id:
@@ -259,7 +260,8 @@ def download():
                 download_name=f"{track_info['artist']} - {track_info['name']}.{file_format}"
             )
         else:
-            return jsonify({'error': 'Download failed'}), 500
+            error_msg = result.get('error') if result else "Unknown error"
+            return jsonify({'error': f"Download failed: {error_msg}"}), 500
     
     except Exception as e:
         print(f"❌ Download error: {e}")
@@ -498,9 +500,16 @@ def prepare_stream():
             )
         )
         
-        if not result or not result.get('file_path') or not os.path.exists(result['file_path']):
+        if not result or result.get('error'):
+            error_msg = result.get('error') if result else "Unknown download error"
+            print(f"❌ Download failed details: {error_msg}")
             loop.close()
-            return jsonify({'error': 'Failed to download track'}), 500
+            return jsonify({'error': f"Download failed: {error_msg}"}), 500
+            
+        if not result.get('file_path') or not os.path.exists(result['file_path']):
+            print(f"❌ File not found after download: {result.get('file_path')}")
+            loop.close()
+            return jsonify({'error': 'File not found after download'}), 500
         
         file_path = result['file_path']
         

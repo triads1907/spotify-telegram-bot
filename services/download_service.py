@@ -71,7 +71,7 @@ class DownloadService:
             return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
-            return None
+            return {'error': str(e)}
     
     def _download_sync(self, query: str, ydl_opts: dict, file_format: str = 'mp3') -> Optional[Dict]:
         """Синхронное скачивание (для запуска в executor)"""
@@ -136,7 +136,7 @@ class DownloadService:
                 }
         except Exception as e:
             print(f"❌ Ошибка в _download_sync: {e}")
-            return None
+            return {'error': str(e)}
 
     
     async def search_and_download_by_query(self, search_query: str, quality: str = '192', file_format: str = 'mp3') -> Optional[Dict]:
@@ -176,7 +176,7 @@ class DownloadService:
             return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
-            return None
+            return {'error': str(e)}
     
     async def get_youtube_url(self, artist: str, track_name: str) -> Optional[str]:
         """
