@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем весь проект
 COPY . .
 
-# Создаем директории для данных
-RUN mkdir -p downloads data
+# Создаем директории для данных и устанавливаем права
+RUN mkdir -p downloads data && chmod -R 777 downloads data
 
 # Запускаем систему через Python-стартер (Бот + Веб)
 CMD ["python", "startup.py"]

@@ -16,8 +16,8 @@ if not TELEGRAM_BOT_TOKEN:
 
 # База данных
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Используем абсолютный путь для SQLite
-DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite+aiosqlite:///{os.path.join(BASE_DIR, "spotify_bot.db")}')
+# Используем абсолютный путь для SQLite (в папке data для Railway)
+DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite+aiosqlite:///{os.path.join(BASE_DIR, "data", "spotify_bot.db")}')
 
 # Web App URL (для авторизации через Telegram)
 WEB_APP_URL = os.getenv('WEB_APP_URL', 'http://localhost:5000')

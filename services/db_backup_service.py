@@ -195,8 +195,18 @@ class DatabaseBackupService:
                 if os.path.exists(self.db_path):
                     os.remove(self.db_path)
                 
+                # Создаем директорию если её нет
+                os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
+                
                 shutil.move(temp_path, self.db_path)
-                print(f"✅ Database file restored: {self.db_path}")
+                
+                # Явно устанавливаем права на запись (chmod 666)
+                try:
+                    os.chmod(self.db_path, 0o666)
+                except Exception as chmod_e:
+                    print(f"⚠️  Warning: Could not set permissions: {chmod_e}")
+                
+                print(f"✅ Database file restored and permissions set: {self.db_path}")
                 return True
             else:
                 print("❌ Failed to download backup file")
