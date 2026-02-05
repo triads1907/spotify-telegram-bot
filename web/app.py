@@ -134,7 +134,7 @@ def get_library():
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=100))
+        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=1000))
         loop.close()
         
         tracks = []
