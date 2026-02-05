@@ -154,6 +154,28 @@ def get_library():
         print(f"❌ Error in get_library: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/sync-library', methods=['POST'])
+def sync_library():
+    \"\"\"Синхронизировать библиотеку с Telegram-каналом\"\"\"
+    try:
+        ts = get_telegram_storage()
+        if not ts:
+            return jsonify({'error': 'Telegram Storage not initialized'}), 500
+            
+        # Запускаем синхронизацию
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(ts.sync_channel_files(db))
+        loop.close()
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Error in sync_library: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 def search_by_url(url):
     """Поиск по Spotify URL"""
     try:
