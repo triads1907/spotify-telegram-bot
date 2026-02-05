@@ -130,7 +130,7 @@ def search():
 
 @app.route('/api/library', methods=['GET'])
 def get_library():
-    \"\"\"Получить все треки из библиотеки (кэша) с авто-синхронизацией\"\"\"
+    """Получить все треки из библиотеки (кэша) с авто-синхронизацией"""
     try:
         ts = get_telegram_storage()
         loop = asyncio.new_event_loop()
