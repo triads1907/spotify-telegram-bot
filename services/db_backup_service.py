@@ -222,12 +222,13 @@ class DatabaseBackupService:
     async def cleanup_old_backups(self, keep_count: int = 2):
         """
         Удалить старые бэкапы БД, оставив только последние keep_count
+        ВАЖНО: Удаляет ТОЛЬКО файлы .db, музыкальные файлы не трогает!
         
         Args:
             keep_count: Количество последних бэкапов для сохранения (по умолчанию 2)
         """
         try:
-            print(f"🧹 Cleaning up old backups (keeping last {keep_count})...")
+            print(f"🧹 Cleaning up old DB backups (keeping last {keep_count})...")
             
             # Получаем закрепленное сообщение (последний бэкап)
             pinned = self.storage.get_pinned_message()
@@ -239,43 +240,98 @@ class DatabaseBackupService:
             if not current_message_id:
                 return
             
-            # Пробуем удалить предыдущие сообщения (простая эвристика)
-            # Ищем бэкапы в диапазоне message_id - 20 до message_id - 1
-            deleted_count = 0
-            for offset in range(1, 20):  # Проверяем последние 20 сообщений
+            # Собираем информацию о бэкапах в канале
+            # Используем copyMessage для проверки типа файла БЕЗ удаления
+            backup_messages = []
+            
+            for offset in range(1, 50):  # Проверяем последние 50 сообщений
                 try:
-                    old_message_id = current_message_id - offset
-                    if old_message_id <= 0:
+                    check_message_id = current_message_id - offset
+                    if check_message_id <= 0:
                         break
                     
-                    # Пробуем удалить сообщение
-                    delete_response = httpx.post(
-                        f"{self.storage.base_url}/deleteMessage",
+                    # Копируем сообщение, чтобы проверить его тип
+                    copy_response = httpx.post(
+                        f"{self.storage.base_url}/copyMessage",
                         data={
                             'chat_id': self.storage.channel_id,
-                            'message_id': old_message_id
+                            'from_chat_id': self.storage.channel_id,
+                            'message_id': check_message_id,
+                            'disable_notification': True
                         },
-                        timeout=10.0
+                        timeout=5.0
                     )
                     
-                    if delete_response.status_code == 200 and delete_response.json().get('ok'):
-                        deleted_count += 1
-                        print(f"🗑️  Deleted old backup message: {old_message_id}")
-                        
-                        # Останавливаемся после удаления достаточного количества
-                        # Оставляем keep_count последних бэкапов
-                        if deleted_count >= (20 - keep_count):
-                            break
+                    if copy_response.status_code == 200:
+                        result = copy_response.json()
+                        if result.get('ok'):
+                            copied_msg_id = result['result']['message_id']
+                            
+                            # Сразу удаляем копию
+                            httpx.post(
+                                f"{self.storage.base_url}/deleteMessage",
+                                data={
+                                    'chat_id': self.storage.channel_id,
+                                    'message_id': copied_msg_id
+                                }
+                            )
+                            
+                            # Проверяем, это документ с .db расширением?
+                            message_data = result['result']
+                            if message_data.get('document'):
+                                doc = message_data['document']
+                                file_name = doc.get('file_name', '')
+                                
+                                # Проверяем, что это бэкап БД
+                                if 'spotify_bot' in file_name.lower() and file_name.endswith('.db'):
+                                    backup_messages.append({
+                                        'message_id': check_message_id,
+                                        'file_name': file_name
+                                    })
+                                    print(f"📋 Found DB backup: {file_name} (msg_id: {check_message_id})")
+                            
+                            # Если это audio - пропускаем!
+                            elif message_data.get('audio'):
+                                audio = message_data['audio']
+                                title = audio.get('title', 'Unknown')
+                                print(f"🎵 Skipping music file: {title} (msg_id: {check_message_id})")
+                                
                 except Exception:
-                    # Сообщение не существует или уже удалено - это нормально
+                    # Сообщение не существует - пропускаем
                     continue
             
-            if deleted_count > 0:
-                print(f"✅ Cleaned up {deleted_count} old backup(s)")
+            # Удаляем старые бэкапы, оставляя только keep_count последних
+            if len(backup_messages) > keep_count:
+                to_delete = backup_messages[keep_count:]  # Старые бэкапы
+                
+                deleted_count = 0
+                for backup in to_delete:
+                    try:
+                        delete_response = httpx.post(
+                            f"{self.storage.base_url}/deleteMessage",
+                            data={
+                                'chat_id': self.storage.channel_id,
+                                'message_id': backup['message_id']
+                            },
+                            timeout=10.0
+                        )
+                        
+                        if delete_response.status_code == 200 and delete_response.json().get('ok'):
+                            deleted_count += 1
+                            print(f"🗑️  Deleted old DB backup: {backup['file_name']} (msg_id: {backup['message_id']})")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete backup {backup['message_id']}: {e}")
+                
+                if deleted_count > 0:
+                    print(f"✅ Cleaned up {deleted_count} old DB backup(s), kept {keep_count} latest")
+                else:
+                    print("⚠️  Failed to delete any backups")
             else:
-                print("ℹ️  No old backups to clean up")
+                print(f"ℹ️  Found {len(backup_messages)} DB backup(s), no cleanup needed (keeping {keep_count})")
                 
         except Exception as e:
             print(f"⚠️  Error during backup cleanup: {e}")
+            import traceback
+            traceback.print_exc()
             # Не критично, продолжаем работу
     
