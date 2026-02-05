@@ -220,6 +220,76 @@ def get_telegram_url():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/prepare-stream', methods=['POST'])
+def prepare_stream():
+    """Подготовить трек для воспроизведения (скачать и загрузить в Telegram)"""
+    try:
+        data = request.json
+        track_id = data.get('id')
+        artist = data.get('artist')
+        name = data.get('name')
+        
+        if not all([track_id, artist, name]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Проверяем, есть ли уже файл в Telegram
+        storage = get_telegram_storage()
+        telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
+        
+        if telegram_file and telegram_file.file_id:
+            # Файл уже есть, получаем URL
+            url = storage.get_file_url(telegram_file.file_id)
+            loop.close()
+            return jsonify({'url': url, 'cached': True})
+        
+        # Скачиваем трек через yt-dlp
+        query = f"{artist} - {name}"
+        file_path = loop.run_until_complete(download_service.download_audio(query, quality='192'))
+        
+        if not file_path or not os.path.exists(file_path):
+            loop.close()
+            return jsonify({'error': 'Failed to download track'}), 500
+        
+        # Загружаем в Telegram
+        file_id = loop.run_until_complete(storage.upload_audio(
+            file_path=file_path,
+            artist=artist,
+            title=name
+        ))
+        
+        if file_id:
+            # Сохраняем в БД
+            loop.run_until_complete(db.save_telegram_file(
+                track_id=track_id,
+                file_id=file_id,
+                artist=artist,
+                track_name=name
+            ))
+            
+            # Получаем URL для воспроизведения
+            url = storage.get_file_url(file_id)
+            
+            # Удаляем временный файл
+            try:
+                os.remove(file_path)
+            except:
+                pass
+            
+            loop.close()
+            return jsonify({'url': url, 'cached': False})
+        else:
+            loop.close()
+            return jsonify({'error': 'Failed to upload to Telegram'}), 500
+            
+    except Exception as e:
+        print(f"❌ Error in prepare_stream: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 def search_by_url(url):
     """Поиск по Spotify URL"""
     try:
