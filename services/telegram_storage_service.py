@@ -259,23 +259,27 @@ class TelegramStorageService:
         except Exception as e:
             print(f"❌ Error getting pinned message: {e}")
             return None
-    async def sync_channel_files(self, db_manager) -> Dict:
+    async def sync_channel_files(self, db_manager, limit: int = 300, stop_on_existing: bool = False) -> Dict:
         """
-        Синхронизировать все аудиофайлы из канала в базу данных
+        Синхронизировать аудиофайлы из канала в базу данных
         
         Args:
             db_manager: Экземпляр DatabaseManager
+            limit: Максимальное количество сообщений для сканирования
+            stop_on_existing: Остановиться, если встретили уже существующий в БД трек
             
         Returns:
             Dict со статистикой синхронизации
         """
-        print(f"🔄 Starting library synchronization from channel {self.channel_id}...")
+        print(f"🔄 Starting library synchronization (limit={limit}, stop_on_existing={stop_on_existing})...")
         
         # 1. Получаем текущий максимальный ID сообщения
         try:
+            # Нам нужно просто узнать актуальный max_id в канале
+            # Отправка временного сообщения - самый надежный способ для Bot API
             temp_msg_resp = httpx.post(
                 f"{self.base_url}/sendMessage",
-                data={'chat_id': self.channel_id, 'text': '🔄 Syncing library...'},
+                data={'chat_id': self.channel_id, 'text': '🔍 Checking for new tracks...'},
                 timeout=30.0
             )
             temp_msg = temp_msg_resp.json()
@@ -298,17 +302,22 @@ class TelegramStorageService:
         skipped_count = 0
         error_count = 0
         consecutive_empty = 0
+        existing_in_a_row = 0
         
-        # 2. Сканируем сообщения вниз (последние 300 сообщений для надежности)
-        print(f"🕵️ Scanning messages from ID {max_id-1} downwards...")
+        # 2. Сканируем сообщения вниз
+        print(f"🕵️ Scanning messages from ID {max_id-1} downwards (scanning {limit} messages)...")
         
-        for msg_id in range(max_id - 1, max(0, max_id - 300), -1):
-            if consecutive_empty > 30: # Если 30 сообщений подряд не аудио - скорее всего всё
-                print(f"ℹ️ Stop scanning at ID {msg_id} (30 consecutive empty messages)")
+        for msg_id in range(max_id - 1, max(0, max_id - limit - 1), -1):
+            if consecutive_empty > 30: 
+                break
+                
+            if stop_on_existing and existing_in_a_row >= 5:
+                print(f"ℹ️ Stop scanning at ID {msg_id} (found 5 existing tracks in a row)")
                 break
                 
             try:
-                # Пытаемся переслать сообщение самому себе в тот же канал для получения содержимого
+                # Пытаемся переслать сообщение
+ самому себе в тот же канал для получения содержимого
                 # Это стандартный способ получить данные сообщения по ID в Bot API
                 response = httpx.post(
                     f"{self.base_url}/forwardMessage",
@@ -373,9 +382,11 @@ class TelegramStorageService:
                         added_count += 1
                         print(f"➕ Added track: {artist} - {title}")
                         consecutive_empty = 0
+                        existing_in_a_row = 0
                     else:
                         skipped_count += 1
                         consecutive_empty = 0
+                        existing_in_a_row += 1
                 else:
                     consecutive_empty += 1
                     

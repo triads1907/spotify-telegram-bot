@@ -185,46 +185,6 @@ async function loadLibrary() {
     }
 }
 
-async function syncLibrary() {
-    const loader = document.getElementById('syncLoader');
-    const syncBtn = document.querySelector('.sync-btn');
-
-    if (syncBtn.classList.contains('disabled')) return;
-
-    syncBtn.classList.add('disabled');
-    syncBtn.style.opacity = '0.5';
-    syncBtn.style.cursor = 'not-allowed';
-    loader.classList.remove('hidden');
-    loader.textContent = 'Syncing...';
-
-    try {
-        const response = await fetch('/api/sync-library', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        const result = await response.json();
-
-        if (result.error) {
-            showNotification(`Sync Error: ${result.error}`, 'error');
-        } else {
-            const added = result.added || 0;
-            const skipped = result.skipped || 0;
-            showNotification(`Sync successful! Added ${added} new tracks, ${skipped} already in library.`, 'success');
-            // Refresh library
-            loadLibrary();
-        }
-    } catch (error) {
-        console.error('Sync error:', error);
-        showNotification('Failed to sync library', 'error');
-    } finally {
-        loader.classList.add('hidden');
-        syncBtn.classList.remove('disabled');
-        syncBtn.style.opacity = '1';
-        syncBtn.style.cursor = 'pointer';
-    }
-}
-
 function displayResults(tracks) {
     const resultsGrid = document.getElementById('resultsGrid');
     resultsData = tracks;

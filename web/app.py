@@ -130,10 +130,19 @@ def search():
 
 @app.route('/api/library', methods=['GET'])
 def get_library():
-    """Получить все треки из библиотеки (кэша)"""
+    \"\"\"Получить все треки из библиотеки (кэша) с авто-синхронизацией\"\"\"
     try:
+        ts = get_telegram_storage()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        # Автоматическая быстрая синхронизация (последние 20 сообщений)
+        if ts:
+            try:
+                loop.run_until_complete(ts.sync_channel_files(db, limit=20, stop_on_existing=True))
+            except Exception as e:
+                print(f"⚠️ Auto-sync failed (skipping): {e}")
+                
         tracks_db = loop.run_until_complete(db.get_library_tracks(limit=1000))
         loop.close()
         
@@ -152,28 +161,6 @@ def get_library():
         
     except Exception as e:
         print(f"❌ Error in get_library: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/sync-library', methods=['POST'])
-def sync_library():
-    """Синхронизировать библиотеку с Telegram-каналом"""
-    try:
-        ts = get_telegram_storage()
-        if not ts:
-            return jsonify({'error': 'Telegram Storage not initialized'}), 500
-            
-        # Запускаем синхронизацию
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(ts.sync_channel_files(db))
-        loop.close()
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        print(f"❌ Error in sync_library: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def search_by_url(url):
