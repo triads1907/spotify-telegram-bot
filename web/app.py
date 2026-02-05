@@ -156,7 +156,7 @@ def get_library():
 
 @app.route('/api/sync-library', methods=['POST'])
 def sync_library():
-    \"\"\"Синхронизировать библиотеку с Telegram-каналом\"\"\"
+    """Синхронизировать библиотеку с Telegram-каналом"""
     try:
         ts = get_telegram_storage()
         if not ts:
