@@ -130,28 +130,35 @@ def search():
 
 @app.route('/api/library', methods=['GET'])
 def get_library():
-    """Получить все треки из библиотеки (кэша)"""
+    """Получить все треки напрямую из Telegram-канала"""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=1000))
+        
+        # Сканируем Telegram-канал напрямую
+        storage = get_telegram_storage()
+        tracks_from_telegram = loop.run_until_complete(storage.scan_channel_audio(limit=200))
+        
         loop.close()
         
+        # Форматируем треки для фронтенда
         tracks = []
-        for track in tracks_db:
+        for track in tracks_from_telegram:
             tracks.append({
-                'id': track.id,
-                'name': track.name,
-                'artist': track.artist,
-                'album': track.album,
-                'image': track.image_url,
-                'spotify_url': track.spotify_url
+                'id': track.get('file_id', ''),  # Используем file_id как ID
+                'name': track.get('name', 'Unknown'),
+                'artist': track.get('artist', 'Unknown Artist'),
+                'album': '',  # В Telegram нет информации об альбоме
+                'image': None,  # В Telegram нет обложек через Bot API
+                'spotify_url': f"tg://msg?channel={config.STORAGE_CHANNEL_ID}&id={track.get('message_id', 0)}"
             })
             
         return jsonify({'tracks': tracks})
         
     except Exception as e:
         print(f"❌ Error in get_library: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sync-library', methods=['POST'])
@@ -185,6 +192,30 @@ def sync_library():
         
     except Exception as e:
         print(f"❌ Error in sync_library: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get-telegram-url', methods=['POST'])
+def get_telegram_url():
+    """Получить прямую ссылку на аудио из Telegram по file_id"""
+    try:
+        data = request.json
+        file_id = data.get('file_id')
+        
+        if not file_id:
+            return jsonify({'error': 'file_id is required'}), 400
+        
+        storage = get_telegram_storage()
+        url = storage.get_file_url(file_id)
+        
+        if url:
+            return jsonify({'url': url})
+        else:
+            return jsonify({'error': 'Failed to get file URL'}), 500
+            
+    except Exception as e:
+        print(f"❌ Error in get_telegram_url: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
