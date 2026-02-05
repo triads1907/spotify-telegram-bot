@@ -130,19 +130,10 @@ def search():
 
 @app.route('/api/library', methods=['GET'])
 def get_library():
-    """Получить все треки из библиотеки (кэша) с авто-синхронизацией"""
+    """Получить все треки из библиотеки (кэша)"""
     try:
-        ts = get_telegram_storage()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
-        # Автоматическая быстрая синхронизация (последние 20 сообщений)
-        if ts:
-            try:
-                loop.run_until_complete(ts.sync_channel_files(db, limit=20, stop_on_existing=True))
-            except Exception as e:
-                print(f"⚠️ Auto-sync failed (skipping): {e}")
-                
         tracks_db = loop.run_until_complete(db.get_library_tracks(limit=1000))
         loop.close()
         
