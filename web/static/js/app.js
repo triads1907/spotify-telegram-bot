@@ -244,38 +244,6 @@ async function playTrack(button, trackData = null) {
 
     if (!track) return;
 
-    // Если трек из Telegram (имеет file_id вместо обычного ID)
-    if (track.id && track.id.startsWith('AgAD')) {
-        // Это file_id из Telegram
-        try {
-            showNotification('Loading from Telegram...', 'info');
-
-            const response = await fetch('/api/get-telegram-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_id: track.id })
-            });
-
-            const data = await response.json();
-
-            if (data.url) {
-                currentTrack = track;
-                audioPlayer.src = data.url;
-                audioPlayer.play().catch(err => {
-                    console.error('Telegram play error:', err);
-                    showNotification('Failed to play from Telegram', 'error');
-                });
-                updatePlayerUI(track);
-                updatePlayButton(true);
-                return;
-            }
-        } catch (error) {
-            console.error('Error getting Telegram URL:', error);
-            showNotification('Failed to load from Telegram', 'error');
-            return;
-        }
-    }
-
     // Сначала пробуем Spotify preview (30 секунд)
     if (track.preview_url) {
         currentTrack = track;

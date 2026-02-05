@@ -3,8 +3,6 @@
 """
 import os
 import asyncio
-import base64
-import tempfile
 from typing import Optional, Dict
 import yt_dlp
 import httpx
@@ -18,43 +16,6 @@ class DownloadService:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.download_dir = os.path.join(base_dir, download_dir)
         os.makedirs(self.download_dir, exist_ok=True)
-        
-        # Настройка cookies для YouTube
-        self.cookies_path = self._setup_cookies()
-    
-    def _setup_cookies(self) -> Optional[str]:
-        """Настройка cookies для YouTube из переменной окружения"""
-        try:
-            # Проверяем переменную окружения
-            cookies_base64 = os.getenv('YOUTUBE_COOKIES')
-            if cookies_base64:
-                print("🍪 Setting up YouTube cookies from environment...")
-                # Декодируем base64
-                cookies_content = base64.b64decode(cookies_base64).decode('utf-8')
-                
-                # Сохраняем во временный файл
-                temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
-                temp_file.write(cookies_content)
-                temp_file.close()
-                
-                print(f"✅ YouTube cookies saved to: {temp_file.name}")
-                return temp_file.name
-            
-            # Проверяем локальный файл (для разработки)
-            local_cookies = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'youtube_cookies.txt'
-            )
-            if os.path.exists(local_cookies):
-                print(f"🍪 Using local cookies file: {local_cookies}")
-                return local_cookies
-            
-            print("⚠️  No YouTube cookies found. Some videos may fail to download.")
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error setting up cookies: {e}")
-            return None
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
@@ -97,10 +58,6 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
         }
-        
-        # Добавляем cookies если доступны
-        if self.cookies_path:
-            ydl_opts['cookiefile'] = self.cookies_path
         
         try:
             loop = asyncio.get_event_loop()
