@@ -700,3 +700,57 @@ document.querySelectorAll('input[name="format"]').forEach(radio => {
         }
     });
 });
+
+// Library Sync Function
+async function syncLibrary() {
+    const syncBtn = document.getElementById('syncBtn');
+    if (!syncBtn) return;
+
+    try {
+        // Start loading state
+        syncBtn.classList.add('loading');
+        syncBtn.disabled = true;
+        const originalText = syncBtn.innerHTML;
+        syncBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+            </svg>
+            Syncing...
+        `;
+
+        showNotification('Scanning Telegram channel for music...', 'info');
+
+        const response = await fetch('/api/sync-library', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.new_tracks_found > 0) {
+                showNotification(`Success! Found ${data.new_tracks_found} new tracks.`, 'success');
+                // Reload library to show new tracks
+                loadLibrary();
+            } else {
+                showNotification(`Sync finished. All ${data.total_scanned} tracks are already in your library.`, 'info');
+            }
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+
+    } catch (error) {
+        console.error('Sync error:', error);
+        showNotification('Failed to sync library: ' + error.message, 'error');
+    } finally {
+        // Reset button state
+        syncBtn.classList.remove('loading');
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+            </svg>
+            Sync with Telegram
+        `;
+    }
+}
