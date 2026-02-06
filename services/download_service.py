@@ -12,6 +12,7 @@ class DownloadService:
         # Всегда используем абсолютный путь относительно корня проекта
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.download_dir = os.path.join(base_dir, download_dir)
+        self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
         os.makedirs(self.download_dir, exist_ok=True)
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
@@ -65,6 +66,7 @@ class DownloadService:
             'geo_bypass': True,
             'nocheckcertificate': True,
             'age_limit': 99,  # Обход возрастных ограничений
+            'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
         try:
@@ -181,6 +183,7 @@ class DownloadService:
             'geo_bypass': True,
             'nocheckcertificate': True,
             'age_limit': 99,  # Обход возрастных ограничений
+            'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
         try:
