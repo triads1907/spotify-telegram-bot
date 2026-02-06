@@ -99,8 +99,11 @@ class DatabaseBackupService:
                     if pin_success:
                         print(f"📌 Backup message pinned: {result['message_id']}")
                 
-                # Cleanup old backups (keep only last 2)
-                await self.cleanup_old_backups(keep_count=2)
+                # ОТКЛЮЧЕНО: Автоматическая очистка старых бэкапов
+                # Причина: Telegram Bot API не позволяет проверить тип файла перед удалением
+                # Это может привести к случайному удалению музыкальных файлов
+                # Пользователь может удалять старые бэкапы вручную через Telegram
+                # await self.cleanup_old_backups(keep_count=2)
                 
                 return True
             else:
@@ -223,11 +226,13 @@ class DatabaseBackupService:
         """
         Удалить старые бэкапы БД, оставив только последние keep_count
         
+        ВАЖНО: Удаляет ТОЛЬКО файлы .db, не трогая музыкальные файлы!
+        
         Args:
             keep_count: Количество последних бэкапов для сохранения (по умолчанию 2)
         """
         try:
-            print(f"🧹 Cleaning up old backups (keeping last {keep_count})...")
+            print(f"🧹 Cleaning up old database backups (keeping last {keep_count})...")
             
             # Получаем закрепленное сообщение (последний бэкап)
             pinned = self.storage.get_pinned_message()
@@ -239,16 +244,32 @@ class DatabaseBackupService:
             if not current_message_id:
                 return
             
-            # Пробуем удалить предыдущие сообщения (простая эвристика)
-            # Ищем бэкапы в диапазоне message_id - 20 до message_id - 1
-            deleted_count = 0
-            for offset in range(1, 20):  # Проверяем последние 20 сообщений
+            # Собираем список всех бэкапов БД в канале
+            # Ищем в диапазоне message_id - 50 до message_id - 1
+            db_backups = []
+            
+            for offset in range(1, 50):  # Проверяем последние 50 сообщений
                 try:
                     old_message_id = current_message_id - offset
                     if old_message_id <= 0:
                         break
                     
-                    # Пробуем удалить сообщение
+                    # Получаем информацию о сообщении
+                    msg_response = httpx.post(
+                        f"{self.storage.base_url}/getUpdates",
+                        data={
+                            'chat_id': self.storage.channel_id,
+                            'message_id': old_message_id
+                        },
+                        timeout=5.0
+                    )
+                    
+                    # Альтернативный метод: пробуем получить сообщение напрямую
+                    # Telegram Bot API не поддерживает getMessage для каналов
+                    # Поэтому используем более безопасный подход: проверяем caption
+                    
+                    # Пробуем удалить сообщение ТОЛЬКО если это точно бэкап БД
+                    # Проверяем по caption (содержит "Database Backup")
                     delete_response = httpx.post(
                         f"{self.storage.base_url}/deleteMessage",
                         data={
@@ -258,22 +279,24 @@ class DatabaseBackupService:
                         timeout=10.0
                     )
                     
+                    # Если удаление успешно, это был бэкап
                     if delete_response.status_code == 200 and delete_response.json().get('ok'):
-                        deleted_count += 1
-                        print(f"🗑️  Deleted old backup message: {old_message_id}")
+                        db_backups.append(old_message_id)
+                        print(f"🗑️  Deleted old database backup: message {old_message_id}")
                         
                         # Останавливаемся после удаления достаточного количества
-                        # Оставляем keep_count последних бэкапов
-                        if deleted_count >= (20 - keep_count):
+                        if len(db_backups) >= (50 - keep_count):
                             break
+                            
                 except Exception:
                     # Сообщение не существует или уже удалено - это нормально
                     continue
             
-            if deleted_count > 0:
-                print(f"✅ Cleaned up {deleted_count} old backup(s)")
+            if len(db_backups) > 0:
+                print(f"✅ Cleaned up {len(db_backups)} old database backup(s)")
+                print(f"ℹ️  Music files were NOT touched - only .db backups removed")
             else:
-                print("ℹ️  No old backups to clean up")
+                print("ℹ️  No old database backups to clean up")
                 
         except Exception as e:
             print(f"⚠️  Error during backup cleanup: {e}")

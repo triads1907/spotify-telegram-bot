@@ -57,6 +57,16 @@ class DownloadService:
             'no_warnings': True,
             'extract_flat': False,
             'default_search': 'ytsearch1',
+            # Обход блокировки YouTube "Sign in to confirm you're not a bot"
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'skip': ['hls', 'dash']
+                }
+            },
+            'geo_bypass': True,
+            'nocheckcertificate': True,
         }
         
         try:
@@ -162,6 +172,16 @@ class DownloadService:
             'no_warnings': True,
             'extract_flat': False,
             'default_search': 'ytsearch1',
+            # Обход блокировки YouTube "Sign in to confirm you're not a bot"
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'skip': ['hls', 'dash']
+                }
+            },
+            'geo_bypass': True,
+            'nocheckcertificate': True,
         }
         
         try:
