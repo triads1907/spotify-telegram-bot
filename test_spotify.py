@@ -22,7 +22,8 @@ print(f"   Результат: {parsed}\n")
 
 # Получаем информацию о треке
 print("2️⃣ Получение информации о треке...")
-track_info = spotify.get_track_info_from_url(url)
+import asyncio
+track_info = asyncio.run(spotify.get_track_info_from_url(url))
 
 if track_info:
     print("   ✅ Успешно!\n")
@@ -31,3 +32,16 @@ if track_info:
     print(f"   🖼️  Обложка: {track_info.get('image_url', 'Нет')[:50]}...")
 else:
     print("   ❌ Не удалось получить информацию")
+
+# Тестируем плейлист
+playlist_url = "https://open.spotify.com/playlist/3nBpNPEsB5cbKUlu6iHVrm?si=JdWs-bLsTFGsfHJJWNoc7g"
+print("\n3️⃣ Тестирование плейлиста...")
+playlist_info = asyncio.run(spotify.get_playlist_info(playlist_url))
+
+if playlist_info:
+    print(f"   ✅ Успешно! Плейлист: {playlist_info['name']}")
+    print(f"   📊 Найдено треков: {len(playlist_info['tracks'])}")
+    for track in playlist_info['tracks'][:5]:
+        print(f"      - {track['artist']} - {track['name']}")
+else:
+    print("   ❌ Не удалось получить информацию о плейлисте")

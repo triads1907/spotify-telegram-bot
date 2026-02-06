@@ -215,8 +215,11 @@ def search_by_url(url):
     try:
         # Определяем тип URL (track, album, playlist)
         if '/track/' in url:
-            # Получаем информацию о треке (синхронный метод)
-            track_info = spotify_service.get_track_info_from_url(url)
+            # Получаем информацию о треке
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            track_info = loop.run_until_complete(spotify_service.get_track_info_from_url(url))
+            loop.close()
             
             if track_info:
                 return jsonify({
@@ -244,7 +247,7 @@ def search_by_url(url):
                 tracks = []
                 for track in playlist_info['tracks']:
                     tracks.append({
-                        'id': f"{track['artist']}_{track['name']}",  # Генерируем ID
+                        'id': track.get('id', f"{track['artist']}_{track['name']}"),  # Используем ID из сервиса или генерируем
                         'name': track['name'],
                         'artist': track['artist'],
                         'album': playlist_info['name'],  # Используем название плейлиста как альбом

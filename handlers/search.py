@@ -61,7 +61,7 @@ async def handle_spotify_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     status_msg = await update.message.reply_text(get_string("searching", lang))
     
     try:
-        track_info = spotify_service.get_track_info_from_url(message_text)
+        track_info = await spotify_service.get_track_info_from_url(message_text)
         
         if not track_info:
             await status_msg.edit_text("❌ Не удалось получить информацию о треке")
