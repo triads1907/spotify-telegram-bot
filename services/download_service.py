@@ -55,10 +55,10 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android'],  # Только Android API - более стабилен
+                    'player_client': ['ios', 'android', 'web_creator', 'tv', 'mweb'],
                     'skip': ['hls', 'dash', 'translated_subs']
                 }
             },
@@ -171,10 +171,10 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android'],  # Только Android API - более стабилен
+                    'player_client': ['ios', 'android', 'web_creator', 'tv', 'mweb'],
                     'skip': ['hls', 'dash', 'translated_subs']
                 }
             },
