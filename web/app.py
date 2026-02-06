@@ -134,7 +134,7 @@ def get_library():
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=1000))
+        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=100))
         loop.close()
         
         tracks = []
@@ -152,41 +152,6 @@ def get_library():
         
     except Exception as e:
         print(f"❌ Error in get_library: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/sync-library', methods=['POST'])
-def sync_library():
-    """Синхронизировать библиотеку с Telegram-каналом"""
-    try:
-        # Проверяем авторизацию (опционально, но желательно)
-        # auth_header = request.headers.get('Authorization')
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # 1. Сканируем канал
-        storage = get_telegram_storage()
-        tracks = loop.run_until_complete(storage.scan_channel_audio(limit=200)) # Сканируем последние 200 сообщений
-        
-        # 2. Сохраняем новые треки в БД
-        new_count = 0
-        for track in tracks:
-            is_new = loop.run_until_complete(db.sync_telegram_track(track))
-            if is_new:
-                new_count += 1
-        
-        loop.close()
-        
-        return jsonify({
-            'success': True,
-            'new_tracks_found': new_count,
-            'total_scanned': len(tracks)
-        })
-        
-    except Exception as e:
-        print(f"❌ Error in sync_library: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def search_by_url(url):
