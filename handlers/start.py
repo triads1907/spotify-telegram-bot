@@ -70,9 +70,17 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Генерация ссылки для входа в веб-интерфейс"""
     user_id = update.effective_user.id
     db = context.bot_data.get('db')
-    import secrets
-    
+    # Сначала гарантируем, что пользователь создан в БД (т.к. токен имеет Foreign Key на User.id)
+    if db:
+        await db.get_or_create_user(
+            user_id=user_id,
+            username=update.effective_user.username,
+            first_name=update.effective_user.first_name,
+            last_name=update.effective_user.last_name
+        )
+        
     # Генерируем токен (теперь создается один раз на всё время)
+    import secrets
     token = secrets.token_urlsafe(32)
     
     # Сохраняем или получаем существующий токен в БД

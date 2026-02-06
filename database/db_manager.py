@@ -32,9 +32,10 @@ class DatabaseManager:
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         async with self.engine.begin() as conn:
-            # Включаем WAL mode для лучшей параллельности в SQLite
+            # Включаем WAL mode и Foreign Keys для лучшей параллельности и целостности в SQLite
             if "sqlite" in self.database_url:
                 await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+                await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
             await conn.run_sync(Base.metadata.create_all)
         print("✅ База данных инициализирована (WAL mode enabled)")
     
@@ -468,7 +469,13 @@ class DatabaseManager:
             existing_token = result.scalars().first()
             
             if existing_token:
-                return existing_token
+                # Если токен не истек, возвращаем его
+                if not existing_token.expires_at or existing_token.expires_at > datetime.utcnow():
+                    return existing_token
+                else:
+                    # Удаляем истекший токен
+                    await session.delete(existing_token)
+                    await session.commit()
 
             expires_at = None
             if expires_in_seconds:
