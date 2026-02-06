@@ -446,12 +446,24 @@ class DatabaseManager:
             
             return None
 
-    async def get_library_tracks(self, limit: int = 100) -> List[Track]:
-        """Получить все треки, которые есть в системе (библиотека канала)"""
-        from sqlalchemy import or_
+    async def get_library_tracks(self, limit: int = 200) -> List[Track]:
+        """Получить все треки, которые есть в системе (библиотека канала), отсортированные по новизне"""
+        from sqlalchemy import or_, func, case
         async with self.async_session() as session:
-            # Выбираем треки, которые есть либо в кэше, либо в хранилище Telegram
-            # Используем outerjoin для объединения всех возможных связей
+            # Используем подзапрос для получения максимальной даты активности для каждого трека
+            # Это гарантирует, что недавно загруженные/кэшированные старые треки поднимутся вверх
+            
+            # Определяем дату последнего действия
+            last_activity = func.max(
+                case(
+                    (TelegramFile.uploaded_at != None, TelegramFile.uploaded_at),
+                    else_=case(
+                        (TrackCache.created_at != None, TrackCache.created_at),
+                        else_=Track.created_at
+                    )
+                )
+            ).label('last_activity')
+
             result = await session.execute(
                 select(Track)
                 .outerjoin(TrackCache, Track.id == TrackCache.track_id)
@@ -461,8 +473,8 @@ class DatabaseManager:
                     TrackCache.id != None,
                     TelegramFile.track_id != None
                 ))
-                .distinct()
-                .order_by(Track.created_at.desc())
+                .group_by(Track.id)
+                .order_by(func.coalesce(func.max(TelegramFile.uploaded_at), func.max(TrackCache.created_at), Track.created_at).desc())
                 .limit(limit)
             )
             return list(result.scalars().all())

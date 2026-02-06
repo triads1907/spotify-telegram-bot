@@ -262,11 +262,20 @@ async def handle_spotify_link(update: Update, context: ContextTypes.DEFAULT_TYPE
                 
                 # Сохраняем file_id в кэш (Функция 10)
                 if db and sent_message.audio:
+                    # 1. Традиционный кэш
                     await db.update_track_cache(
                         track_id, 
                         sent_message.audio.file_id,
                         file_format=file_format,
                         quality=quality
+                    )
+                    # 2. Новое общее хранилище Telegram для Discover
+                    await db.save_telegram_file(
+                        track_id=track_id,
+                        file_id=sent_message.audio.file_id,
+                        artist=track_info['artist'],
+                        track_name=track_info['name'],
+                        file_size=result.get('file_size', 0)
                     )
                 
                 # Записываем в историю (Функция 5)
