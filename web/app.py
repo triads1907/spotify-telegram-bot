@@ -269,62 +269,6 @@ def download():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/import-playlist', methods=['POST'])
-def import_playlist():
-    """Импорт плейлиста из YouTube или Spotify"""
-    try:
-        data = request.json
-        playlist_url = data.get('playlist_url')
-        
-        if not playlist_url:
-            return jsonify({'error': 'Playlist URL is required'}), 400
-        
-        # Проверяем, что это действительно URL плейлиста
-        if not ('youtube.com/playlist' in playlist_url or 
-                'youtu.be/playlist' in playlist_url or 
-                'spotify.com/playlist' in playlist_url):
-            return jsonify({'error': 'Invalid playlist URL. Supported: YouTube, Spotify playlists'}), 400
-        
-        print(f"📋 Importing playlist: {playlist_url}")
-        
-        # Извлекаем информацию о треках из плейлиста
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        tracks = loop.run_until_complete(
-            download_service.extract_playlist_info(playlist_url)
-        )
-        loop.close()
-        
-        if not tracks:
-            return jsonify({'error': 'Failed to extract playlist info. Please check the URL and try again.'}), 500
-        
-        # Форматируем треки для фронтенда
-        formatted_tracks = []
-        for track in tracks:
-            formatted_tracks.append({
-                'artist': track.get('artist', 'Unknown Artist'),
-                'title': track.get('title', 'Unknown Title'),
-                'url': track.get('url', ''),
-                'duration': track.get('duration', 0),
-                'thumbnail': track.get('thumbnail', ''),
-                'original_title': track.get('original_title', '')
-            })
-        
-        print(f"✅ Successfully imported {len(formatted_tracks)} tracks from playlist")
-        
-        return jsonify({
-            'success': True,
-            'tracks': formatted_tracks,
-            'count': len(formatted_tracks)
-        })
-    
-    except Exception as e:
-        print(f"❌ Import playlist error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
 # Временное хранилище токенов (в идеале использовать Redis или общую таблицу в БД)
 # Но для простоты пока будем использовать глобальную переменную, 
 # так как бот и веб работают в разных процессах, нам нужно общее хранилище.
