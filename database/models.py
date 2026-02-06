@@ -218,3 +218,16 @@ class TelegramFile(Base):
 
     def __repr__(self):
         return f"<TelegramFile(track_id={self.track_id}, file_id={self.file_id})>"
+
+
+class BackupLog(Base):
+    """Лог бэкапов БД в Telegram Channel"""
+    __tablename__ = 'backup_logs'
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<BackupLog(id={self.id}, message_id={self.message_id})>"

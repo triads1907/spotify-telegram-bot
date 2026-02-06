@@ -85,6 +85,9 @@ async def post_init(application: Application) -> None:
         await db.init_db()
         application.bot_data['db'] = db
         
+        # Подключаем менеджер БД к сервису бэкапов для персистентной очистки
+        backup_service.db = db
+        
         # 3. Инициализация остальных сервисов
         spotify = SpotifyService()
         application.bot_data['spotify'] = spotify

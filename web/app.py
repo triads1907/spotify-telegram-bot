@@ -42,7 +42,8 @@ def get_backup_service():
         from services.db_backup_service import DatabaseBackupService
         backup_service = DatabaseBackupService(
             storage_service=get_telegram_storage(),
-            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+            db_path=config.DATABASE_URL.replace('sqlite+aiosqlite:///', ''),
+            db_manager=db
         )
     return backup_service
 
@@ -252,7 +253,7 @@ def search_by_url(url):
                         'artist': track['artist'],
                         'album': playlist_info['name'],  # Используем название плейлиста как альбом
                         'duration': track.get('duration', 0),
-                        'image': None,
+                        'image': track.get('image'),
                         'preview_url': None,
                         'playlist_name': playlist_info['name']
                     })

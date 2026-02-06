@@ -7,7 +7,7 @@ from sqlalchemy import select, delete
 from typing import Optional, List
 from datetime import datetime, timedelta
 
-from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken, TelegramFile
+from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken, TelegramFile, BackupLog
 import config
 
 
@@ -447,34 +447,13 @@ class DatabaseManager:
             return None
 
     async def get_library_tracks(self, limit: int = 500) -> List[Track]:
-        """Получить все треки, которые есть в системе (библиотека канала), отсортированные по новизне"""
-        from sqlalchemy import or_, func, case
+        """Получить все треки, которые есть в Telegram Storage (библиотека канала)"""
         async with self.async_session() as session:
-            # Используем подзапрос для получения максимальной даты активности для каждого трека
-            # Это гарантирует, что недавно загруженные/кэшированные старые треки поднимутся вверх
-            
-            # Определяем дату последнего действия
-            last_activity = func.max(
-                case(
-                    (TelegramFile.uploaded_at != None, TelegramFile.uploaded_at),
-                    else_=case(
-                        (TrackCache.created_at != None, TrackCache.created_at),
-                        else_=Track.created_at
-                    )
-                )
-            ).label('last_activity')
-
+            # Выбираем только те треки, которые успешно загружены в Telegram Channel
             result = await session.execute(
                 select(Track)
-                .outerjoin(TrackCache, Track.id == TrackCache.track_id)
-                .outerjoin(TelegramFile, Track.id == TelegramFile.track_id)
-                .where(or_(
-                    Track.telegram_file_id != None,
-                    TrackCache.id != None,
-                    TelegramFile.track_id != None
-                ))
-                .group_by(Track.id)
-                .order_by(func.coalesce(func.max(TelegramFile.uploaded_at), func.max(TrackCache.created_at), Track.created_at).desc())
+                .join(TelegramFile, Track.id == TelegramFile.track_id)
+                .order_by(TelegramFile.uploaded_at.desc())
                 .limit(limit)
             )
             return list(result.scalars().all())
@@ -577,3 +556,32 @@ class DatabaseManager:
         """Проверить, есть ли файл в Telegram Storage"""
         telegram_file = await self.get_telegram_file(track_id)
         return telegram_file is not None
+
+    # ========== BACKUP LOGS ==========
+    
+    async def save_backup_log(self, message_id: int, file_id: str) -> BackupLog:
+        """Сохранить лог бэкапа"""
+        async with self.async_session() as session:
+            log = BackupLog(
+                message_id=message_id,
+                file_id=file_id
+            )
+            session.add(log)
+            await session.commit()
+            return log
+            
+    async def get_backup_logs(self, limit: int = 10) -> List[BackupLog]:
+        """Получить последние логи бэкапов"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(BackupLog).order_by(BackupLog.created_at.desc()).limit(limit)
+            )
+            return list(result.scalars().all())
+
+    async def delete_backup_log(self, message_id: int):
+        """Удалить лог бэкапа"""
+        async with self.async_session() as session:
+            await session.execute(
+                delete(BackupLog).where(BackupLog.message_id == message_id)
+            )
+            await session.commit()

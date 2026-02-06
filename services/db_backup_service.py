@@ -12,17 +12,19 @@ import httpx
 class DatabaseBackupService:
     """Сервис для backup и восстановления БД через Telegram Storage"""
     
-    def __init__(self, storage_service, db_path: str):
+    def __init__(self, storage_service, db_path: str, db_manager=None):
         """
         Args:
             storage_service: TelegramStorageService instance
             db_path: Путь к файлу БД (например, 'spotify_bot.db')
+            db_manager: DatabaseManager instance for persistent logging
         """
         self.storage = storage_service
         self.db_path = db_path
+        self.db = db_manager
         self.backup_file_id = None
         self.is_running = False
-        self.backup_message_ids = []  # Список message_id всех созданных бэкапов БД
+        self.backup_message_ids = []  # Список message_id созданных в сессии
         
         print(f"📦 Database Backup Service initialized for: {db_path}")
     
@@ -102,6 +104,10 @@ class DatabaseBackupService:
                     
                     # Сохраняем message_id бэкапа для безопасного удаления
                     self.backup_message_ids.append(result['message_id'])
+                    
+                    # Сохраняем в БД для надежности (Функция 3 - персистентность)
+                    if self.db:
+                        await self.db.save_backup_log(result['message_id'], result['file_id'])
                 
                 # Автоматическая очистка старых бэкапов (БЕЗОПАСНО - удаляет только отслеживаемые message_id)
                 await self.cleanup_old_backups(keep_count=2)
@@ -236,13 +242,22 @@ class DatabaseBackupService:
         try:
             print(f"🧹 Cleaning up old database backups (keeping last {keep_count})...")
             
+            # Собираем все IDs (из памяти и из БД для персистентности)
+            all_ids = list(set(self.backup_message_ids))
+            if self.db:
+                logs = await self.db.get_backup_logs(limit=20)
+                all_ids = list(set(all_ids + [log.message_id for log in logs]))
+            
+            # Сортируем по возрастанию (от старых к новым)
+            all_ids.sort()
+            
             # Проверяем, есть ли бэкапы для удаления
-            if len(self.backup_message_ids) <= keep_count:
-                print(f"ℹ️  Only {len(self.backup_message_ids)} backup(s) exist, nothing to clean up")
+            if len(all_ids) <= keep_count:
+                print(f"ℹ️  Only {len(all_ids)} backup(s) exist, nothing to clean up")
                 return
             
             # Вычисляем, сколько бэкапов нужно удалить
-            backups_to_delete = self.backup_message_ids[:-keep_count]  # Все кроме последних keep_count
+            backups_to_delete = all_ids[:-keep_count]  # Все кроме последних keep_count
             deleted_count = 0
             
             for message_id in backups_to_delete:
@@ -260,6 +275,14 @@ class DatabaseBackupService:
                     if delete_response.status_code == 200 and delete_response.json().get('ok'):
                         deleted_count += 1
                         print(f"🗑️  Deleted old database backup: message {message_id}")
+                        
+                        # Удаляем из БД
+                        if self.db:
+                            await self.db.delete_backup_log(message_id)
+                        
+                        # Удаляем из памяти если есть
+                        if message_id in self.backup_message_ids:
+                            self.backup_message_ids.remove(message_id)
                     else:
                         print(f"⚠️  Could not delete message {message_id}: {delete_response.text}")
                         
@@ -267,8 +290,8 @@ class DatabaseBackupService:
                     print(f"⚠️  Error deleting message {message_id}: {e}")
                     continue
             
-            # Обновляем список, оставляя только последние keep_count бэкапов
-            self.backup_message_ids = self.backup_message_ids[-keep_count:]
+            # Обновляем список сессии
+            # Мы уже удалили из него нужные элементы в цикле выше
             
             if deleted_count > 0:
                 print(f"✅ Cleaned up {deleted_count} old database backup(s)")

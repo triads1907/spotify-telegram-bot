@@ -10,15 +10,17 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database.db_manager import DatabaseManager
 from database.models import Track, TrackCache, TelegramFile
+from services.telegram_storage_service import TelegramStorageService
 
 async def sync_discovery():
     print("🔄 Starting Discovery Sync...")
     db = DatabaseManager()
     await db.init_db()
     
+    storage = TelegramStorageService()
+    
     async with db.async_session() as session:
-        # 1. Находим все треки, у которых есть file_id в старых таблицах, но нет в TelegramFile
-        # Проверяем Track.telegram_file_id
+        # 1. Находим все треки из legacy кэша
         result = await session.execute(
             select(Track).where(Track.telegram_file_id != None)
         )
@@ -26,7 +28,6 @@ async def sync_discovery():
         print(f"🔍 Found {len(tracks_with_legacy_id)} tracks with legacy telegram_file_id")
         
         for track in tracks_with_legacy_id:
-            # Проверяем, есть ли уже в TelegramFile
             tg_check = await session.get(TelegramFile, track.id)
             if not tg_check:
                 print(f"➕ Adding {track.artist} - {track.name} to TelegramFile from legacy ID")
@@ -40,16 +41,13 @@ async def sync_discovery():
                 session.add(new_file)
         
         # 2. Проверяем TrackCache
-        result = await session.execute(
-            select(TrackCache)
-        )
+        result = await session.execute(select(TrackCache))
         cache_entries = result.scalars().all()
         print(f"🔍 Found {len(cache_entries)} cache entries")
         
         for entry in cache_entries:
             tg_check = await session.get(TelegramFile, entry.track_id)
             if not tg_check:
-                # Получаем инфо о треке
                 track = await session.get(Track, entry.track_id)
                 if track:
                     print(f"➕ Adding {track.artist} - {track.name} to TelegramFile from cache")
@@ -63,12 +61,30 @@ async def sync_discovery():
                     session.add(new_file)
         
         await session.commit()
-        print("✅ Discovery Sync complete!")
         
-        # 3. Финальная проверка количества
+        # 3. Верификация существующих записей в Telegram Channel
+        # Мы проверяем, что файлы реально доступны в Telegram
         result = await session.execute(select(TelegramFile))
         all_files = result.scalars().all()
-        print(f"📊 Total tracks in Discover: {len(all_files)}")
+        print(f"🧐 Verifying {len(all_files)} files in Telegram Storage...")
+        
+        deleted_count = 0
+        for tg_file in all_files:
+            if not storage.file_exists(tg_file.file_id):
+                print(f"🗑️ Removing orphaned record (file not in channel): {tg_file.artist} - {tg_file.track_name}")
+                await session.delete(tg_file)
+                deleted_count += 1
+        
+        await session.commit()
+        print(f"✅ Discovery Sync complete! Cleaned up {deleted_count} orphaned records.")
+        
+        # Финальный отчет
+        result = await session.execute(select(TelegramFile))
+        final_files = result.scalars().all()
+        print(f"📊 Total valid tracks in Discover: {len(final_files)}")
+
+if __name__ == "__main__":
+    asyncio.run(sync_discovery())
 
 if __name__ == "__main__":
     asyncio.run(sync_discovery())
