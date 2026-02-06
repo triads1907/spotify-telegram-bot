@@ -3,6 +3,8 @@
 Простой подход: используем oEmbed для названия, YouTube сам найдёт исполнителя
 """
 import re
+import json
+import asyncio
 from typing import Optional, Dict
 import requests
 import httpx
@@ -80,7 +82,6 @@ class SpotifyService:
                         script_tag = soup.find('script', {'id': '__NEXT_DATA__', 'type': 'application/json'})
                         
                         if script_tag:
-                            import json
                             data = json.loads(script_tag.string)
                             entity = data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
                             
