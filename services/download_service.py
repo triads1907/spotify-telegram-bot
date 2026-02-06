@@ -3,7 +3,7 @@
 """
 import os
 import asyncio
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import yt_dlp
 import httpx
 
@@ -239,6 +239,103 @@ class DownloadService:
                     return info.get('webpage_url')
         except Exception as e:
             print(f"❌ Ошибка в _get_url_sync: {e}")
+            return None
+    
+    async def extract_playlist_info(self, playlist_url: str) -> Optional[List[Dict]]:
+        """
+        Извлечь информацию о треках из плейлиста (YouTube, Spotify и т.д.)
+        
+        Args:
+            playlist_url: URL плейлиста
+            
+        Returns:
+            List[{artist, title, url, duration, thumbnail}] или None при ошибке
+        """
+        try:
+            print(f"📋 Extracting playlist info from: {playlist_url}")
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self._extract_playlist_sync,
+                playlist_url
+            )
+            return result
+        except Exception as e:
+            print(f"❌ Ошибка извлечения плейлиста: {e}")
+            return None
+    
+    def _extract_playlist_sync(self, playlist_url: str) -> Optional[List[Dict]]:
+        """Синхронное извлечение информации о плейлисте"""
+        try:
+            ydl_opts = {
+                'extract_flat': True,  # Не скачивать, только метаданные
+                'quiet': True,
+                'no_warnings': True,
+                # Обход блокировки YouTube
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android'],
+                        'skip': ['hls', 'dash', 'translated_subs']
+                    }
+                },
+                'geo_bypass': True,
+                'nocheckcertificate': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+                
+                if not info:
+                    return None
+                
+                # Проверяем, что это плейлист
+                if 'entries' not in info:
+                    print("⚠️ URL не является плейлистом")
+                    return None
+                
+                tracks = []
+                for entry in info['entries']:
+                    if not entry:  # Пропускаем удаленные/недоступные видео
+                        continue
+                    
+                    # Извлекаем информацию о треке
+                    title = entry.get('title', 'Unknown')
+                    url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
+                    duration = entry.get('duration', 0)
+                    thumbnail = entry.get('thumbnail', '')
+                    
+                    # Пытаемся разделить title на artist и track_name
+                    # Формат обычно: "Artist - Track Name" или "Artist: Track Name"
+                    artist = 'Unknown Artist'
+                    track_name = title
+                    
+                    if ' - ' in title:
+                        parts = title.split(' - ', 1)
+                        artist = parts[0].strip()
+                        track_name = parts[1].strip()
+                    elif ': ' in title:
+                        parts = title.split(': ', 1)
+                        artist = parts[0].strip()
+                        track_name = parts[1].strip()
+                    
+                    tracks.append({
+                        'artist': artist,
+                        'title': track_name,
+                        'url': url,
+                        'duration': duration,
+                        'thumbnail': thumbnail,
+                        'original_title': title  # Сохраняем оригинальное название
+                    })
+                
+                print(f"✅ Extracted {len(tracks)} tracks from playlist")
+                return tracks
+                
+        except Exception as e:
+            print(f"❌ Ошибка в _extract_playlist_sync: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     async def download_image(self, url: str) -> Optional[str]:

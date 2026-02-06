@@ -700,3 +700,139 @@ document.querySelectorAll('input[name="format"]').forEach(radio => {
         }
     });
 });
+
+// ===== PLAYLIST IMPORT FUNCTIONS =====
+
+// Store imported playlist tracks
+let importedPlaylistTracks = [];
+
+/**
+ * Show prompt to import playlist
+ */
+function showImportPlaylistPrompt() {
+    const playlistUrl = prompt('Enter YouTube or Spotify playlist URL:');
+
+    if (!playlistUrl) {
+        return; // User cancelled
+    }
+
+    // Validate URL
+    if (!playlistUrl.includes('youtube.com/playlist') &&
+        !playlistUrl.includes('youtu.be/playlist') &&
+        !playlistUrl.includes('spotify.com/playlist')) {
+        showNotification('❌ Invalid playlist URL. Please enter a YouTube or Spotify playlist link.');
+        return;
+    }
+
+    importPlaylist(playlistUrl);
+}
+
+/**
+ * Import playlist from URL
+ */
+async function importPlaylist(playlistUrl) {
+    try {
+        showNotification('📋 Importing playlist...');
+
+        const response = await fetch('/api/import-playlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ playlist_url: playlistUrl })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to import playlist');
+        }
+
+        if (data.success && data.tracks) {
+            importedPlaylistTracks = data.tracks;
+            displayImportedPlaylist(data.tracks);
+            showNotification(`✅ Successfully imported ${data.count} tracks!`);
+
+            // Switch to playlists tab to show imported tracks
+            document.querySelector('[data-page="playlists"]').click();
+        } else {
+            throw new Error('No tracks found in playlist');
+        }
+
+    } catch (error) {
+        console.error('Import playlist error:', error);
+        showNotification(`❌ ${error.message}`);
+    }
+}
+
+/**
+ * Display imported playlist tracks
+ */
+function displayImportedPlaylist(tracks) {
+    const section = document.getElementById('importedPlaylistSection');
+    const grid = document.getElementById('importedTracksGrid');
+
+    if (!tracks || tracks.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    grid.innerHTML = '';
+
+    tracks.forEach((track, index) => {
+        const trackCard = document.createElement('div');
+        trackCard.className = 'track-card';
+        trackCard.innerHTML = `
+            <div class="track-image">
+                <img src="${track.thumbnail || '/static/images/default-album.png'}" alt="${track.title}">
+                <button class="play-btn" onclick="playTrackFromPlaylist(${index})">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="track-info">
+                <div class="track-name">${track.title}</div>
+                <div class="track-artist">${track.artist}</div>
+            </div>
+            <div class="track-duration">${formatDuration(track.duration)}</div>
+        `;
+        grid.appendChild(trackCard);
+    });
+}
+
+/**
+ * Play track from imported playlist
+ */
+function playTrackFromPlaylist(index) {
+    if (!importedPlaylistTracks || index >= importedPlaylistTracks.length) {
+        showNotification('❌ Track not found');
+        return;
+    }
+
+    const track = importedPlaylistTracks[index];
+
+    // Set current playlist and index for shuffle/repeat
+    currentPlaylist = importedPlaylistTracks;
+    currentTrackIndex = index;
+
+    // Play the track (use existing playTrack function)
+    playTrack({
+        id: `imported_${index}`,
+        name: track.title,
+        artist: track.artist,
+        image: track.thumbnail,
+        duration: track.duration
+    });
+}
+
+/**
+ * Format duration from seconds to MM:SS
+ */
+function formatDuration(seconds) {
+    if (!seconds || seconds === 0) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}

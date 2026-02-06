@@ -92,8 +92,20 @@
         <div id="playlists" class="content-section">
             <div class="section-header">
                 <h2>Your Playlists</h2>
-                <button class="create-pl-btn" onclick="openCreatePlaylistModal()">+ New Playlist</button>
+                <div class="playlist-actions">
+                    <button class="create-pl-btn" onclick="showImportPlaylistPrompt()">📋 Import Playlist</button>
+                    <button class="create-pl-btn" onclick="openCreatePlaylistModal()">+ New Playlist</button>
+                </div>
             </div>
+
+            <!-- Imported Playlists Section -->
+            <div id="importedPlaylistSection" class="imported-playlist-section" style="display: none;">
+                <h3 class="section-subtitle">Imported Playlist</h3>
+                <div class="imported-tracks-grid" id="importedTracksGrid">
+                    <!-- Imported tracks will be inserted here -->
+                </div>
+            </div>
+
             <div class="playlists-grid" id="playlistsGrid">
                 <!-- Playlists will be inserted here -->
             </div>
