@@ -58,15 +58,16 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
-                    'skip': ['hls', 'dash']
+                    'player_client': ['android'],  # Только Android API - более стабилен
+                    'skip': ['hls', 'dash', 'translated_subs']
                 }
             },
             'geo_bypass': True,
             'nocheckcertificate': True,
+            'age_limit': 99,  # Обход возрастных ограничений
         }
         
         try:
@@ -173,15 +174,16 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
-                    'skip': ['hls', 'dash']
+                    'player_client': ['android'],  # Только Android API - более стабилен
+                    'skip': ['hls', 'dash', 'translated_subs']
                 }
             },
             'geo_bypass': True,
             'nocheckcertificate': True,
+            'age_limit': 99,  # Обход возрастных ограничений
         }
         
         try:
