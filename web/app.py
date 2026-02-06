@@ -175,8 +175,43 @@ def search_by_url(url):
                     }]
                 })
         
-        elif '/album/' in url or '/playlist/' in url:
-            # Для альбомов и плейлистов пока не поддерживается
+        elif '/playlist/' in url:
+            # Поддержка Spotify плейлистов
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            playlist_info = loop.run_until_complete(spotify_service.get_playlist_info(url))
+            loop.close()
+            
+            if playlist_info and playlist_info.get('tracks'):
+                # Форматируем треки плейлиста
+                tracks = []
+                for track in playlist_info['tracks']:
+                    tracks.append({
+                        'id': f"{track['artist']}_{track['name']}",  # Генерируем ID
+                        'name': track['name'],
+                        'artist': track['artist'],
+                        'album': playlist_info['name'],  # Используем название плейлиста как альбом
+                        'duration': track.get('duration', 0),
+                        'image': None,
+                        'preview_url': None,
+                        'playlist_name': playlist_info['name']
+                    })
+                
+                return jsonify({
+                    'tracks': tracks,
+                    'playlist_info': {
+                        'name': playlist_info['name'],
+                        'total_tracks': playlist_info['total_tracks']
+                    }
+                })
+            else:
+                return jsonify({
+                    'error': 'Could not extract tracks from playlist. Please try again or use a different playlist.'
+                }), 404
+        
+        elif '/album/' in url:
+            # Для альбомов пока не поддерживается
             return jsonify({
                 'error': 'Album and playlist support coming soon',
                 'tracks': []

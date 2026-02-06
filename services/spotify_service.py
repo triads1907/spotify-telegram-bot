@@ -134,3 +134,126 @@ class SpotifyService:
         """
         print(f"⚠️ Поиск без Spotify API недоступен: {query}")
         return []
+    
+    def is_playlist_url(self, url: str) -> bool:
+        """
+        Проверить, является ли URL ссылкой на Spotify плейлист
+        
+        Args:
+            url: URL для проверки
+            
+        Returns:
+            True если это ссылка на плейлист
+        """
+        parsed = self.parse_spotify_url(url)
+        return parsed is not None and parsed['type'] == 'playlist'
+    
+    async def get_playlist_info(self, playlist_url: str) -> Optional[Dict]:
+        """
+        Получить информацию о плейлисте через веб-скрапинг
+        
+        Args:
+            playlist_url: URL плейлиста Spotify
+            
+        Returns:
+            Dict с информацией о плейлисте и списком треков
+        """
+        try:
+            from bs4 import BeautifulSoup
+            import httpx
+            
+            # Парсим URL для получения ID
+            parsed = self.parse_spotify_url(playlist_url)
+            if not parsed or parsed['type'] != 'playlist':
+                print("❌ Invalid playlist URL")
+                return None
+            
+            playlist_id = parsed['id']
+            clean_url = f"https://open.spotify.com/playlist/{playlist_id}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            }
+            
+            print(f"🔍 Fetching playlist: {clean_url}")
+            
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+                response = await client.get(clean_url, timeout=30.0)
+                
+                if response.status_code != 200:
+                    print(f"❌ Failed to fetch playlist: HTTP {response.status_code}")
+                    return None
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Извлекаем название плейлиста из meta tags
+                playlist_name = "Unknown Playlist"
+                og_title = soup.find('meta', property='og:title')
+                if og_title:
+                    playlist_name = og_title.get('content', playlist_name)
+                
+                # Извлекаем треки из JSON данных в странице
+                tracks = []
+                script_tag = soup.find('script', {'id': '__NEXT_DATA__', 'type': 'application/json'})
+                
+                if script_tag:
+                    import json
+                    data = json.loads(script_tag.string)
+                    
+                    try:
+                        # Навигация по структуре JSON
+                        playlist_data = data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('playlistV2', {})
+                        
+                        if 'content' in playlist_data:
+                            items = playlist_data['content'].get('items', [])
+                            
+                            for idx, item in enumerate(items):
+                                try:
+                                    track_data = item.get('itemV2', {}).get('data', {})
+                                    
+                                    if track_data:
+                                        track_name = track_data.get('name', 'Unknown')
+                                        
+                                        # Извлекаем исполнителей
+                                        artists = track_data.get('artists', {}).get('items', [])
+                                        artist_names = [artist.get('profile', {}).get('name', '') for artist in artists]
+                                        artist_str = ', '.join(filter(None, artist_names)) or 'Unknown Artist'
+                                        
+                                        # Длительность
+                                        duration_ms = track_data.get('trackDuration', {}).get('totalMilliseconds', 0)
+                                        duration_sec = duration_ms // 1000
+                                        
+                                        tracks.append({
+                                            'position': idx + 1,
+                                            'name': track_name,
+                                            'artist': artist_str,
+                                            'duration': duration_sec
+                                        })
+                                        
+                                except Exception as e:
+                                    print(f"⚠️  Error parsing track {idx}: {e}")
+                                    continue
+                    
+                    except (KeyError, TypeError, AttributeError) as e:
+                        print(f"⚠️  Error parsing playlist JSON: {e}")
+                
+                if not tracks:
+                    print("⚠️  Could not extract tracks from playlist")
+                    return None
+                
+                print(f"✅ Found {len(tracks)} tracks in playlist '{playlist_name}'")
+                
+                return {
+                    'id': playlist_id,
+                    'name': playlist_name,
+                    'url': clean_url,
+                    'tracks': tracks,
+                    'total_tracks': len(tracks)
+                }
+                
+        except Exception as e:
+            print(f"❌ Error fetching playlist: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
