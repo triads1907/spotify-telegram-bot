@@ -161,6 +161,35 @@ async function searchTracks(query) {
     }
 }
 
+async function syncLibrary() {
+    const btn = document.getElementById('syncLibraryBtn');
+    if (!btn) return;
+
+    try {
+        btn.classList.add('spinning');
+        btn.disabled = true;
+        showNotification('Syncing discovery library...', 'info');
+
+        const response = await fetch('/api/sync-library', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`Sync complete! Added ${data.added_count} tracks.`, 'success');
+            loadLibrary(); // Reload the library to show new tracks
+        } else {
+            showNotification(data.error || 'Sync failed', 'error');
+        }
+    } catch (error) {
+        console.error('Sync error:', error);
+        showNotification('Failed to connect to sync service', 'error');
+    } finally {
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+    }
+}
+
 async function loadLibrary() {
     try {
         const response = await fetch('/api/library');

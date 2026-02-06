@@ -446,7 +446,7 @@ class DatabaseManager:
             
             return None
 
-    async def get_library_tracks(self, limit: int = 200) -> List[Track]:
+    async def get_library_tracks(self, limit: int = 500) -> List[Track]:
         """Получить все треки, которые есть в системе (библиотека канала), отсортированные по новизне"""
         from sqlalchemy import or_, func, case
         async with self.async_session() as session:

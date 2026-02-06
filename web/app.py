@@ -128,13 +128,69 @@ def search():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/sync-library', methods=['POST'])
+def sync_library():
+    """Синхронизировать библиотеку (перенести данные из старых таблиц в Discovery)"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Получаем все треки с легаси ID
+        async def run_sync():
+            async with db.async_session() as session:
+                from database.models import Track, TrackCache, TelegramFile
+                from sqlalchemy import select
+                from datetime import datetime
+                
+                added_count = 0
+                # 1. Сначала из Track.telegram_file_id
+                result = await session.execute(select(Track).where(Track.telegram_file_id != None))
+                for track in result.scalars().all():
+                    exists = await session.get(TelegramFile, track.id)
+                    if not exists:
+                        session.add(TelegramFile(
+                            track_id=track.id,
+                            file_id=track.telegram_file_id,
+                            artist=track.artist,
+                            track_name=track.name,
+                            uploaded_at=track.cached_at or track.created_at or datetime.utcnow()
+                        ))
+                        added_count += 1
+                
+                # 2. Потом из TrackCache
+                result = await session.execute(select(TrackCache))
+                for entry in result.scalars().all():
+                    exists = await session.get(TelegramFile, entry.track_id)
+                    if not exists:
+                        track = await session.get(Track, entry.track_id)
+                        if track:
+                            session.add(TelegramFile(
+                                track_id=entry.track_id,
+                                file_id=entry.telegram_file_id,
+                                artist=track.artist,
+                                track_name=track.name,
+                                uploaded_at=entry.created_at or datetime.utcnow()
+                            ))
+                            added_count += 1
+                
+                await session.commit()
+                return added_count
+        
+        count = loop.run_until_complete(run_sync())
+        loop.close()
+        return jsonify({'success': True, 'added_count': count})
+        
+    except Exception as e:
+        print(f"❌ Sync error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/library', methods=['GET'])
 def get_library():
     """Получить все треки из библиотеки (кэша)"""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=100))
+        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=500))
         loop.close()
         
         tracks = []
@@ -253,12 +309,48 @@ def download():
             
             if result and result.get('file_path') and os.path.exists(result['file_path']):
                 file_path = result['file_path']
+                
+                # РЕГИСТРАЦИЯ В DISCOVER (Функция для надежности)
+                try:
+                    # Генерируем ID если его нет
+                    if not track_id:
+                        import hashlib
+                        unique_string = f"{track_artist}_{track_name}".lower()
+                        track_id = hashlib.md5(unique_string.encode()).hexdigest()[:16]
+                    
+                    # 1. Создаем трек в БД
+                    loop.run_until_complete(db.get_or_create_track({
+                        'id': track_id,
+                        'name': track_name,
+                        'artist': track_artist,
+                        'spotify_url': f"https://open.spotify.com/search/{track_artist} {track_name}"
+                    }))
+                    
+                    # 2. Загружаем в Telegram Storage (чтобы появился в Discover)
+                    print(f"📤 Auto-uploading web download to Telegram: {track_name}")
+                    upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_artist} - {track_name}")
+                    if upload_result and upload_result.get('file_id'):
+                        file_id = upload_result['file_id']
+                        # Сохраняем во все кэш-таблицы
+                        loop.run_until_complete(db.update_track_cache(track_id, file_id, file_format, quality))
+                        loop.run_until_complete(db.save_telegram_file(
+                            track_id=track_id, 
+                            file_id=file_id, 
+                            artist=track_artist, 
+                            track_name=track_name, 
+                            file_size=result.get('file_size', 0)
+                        ))
+                except Exception as reg_e:
+                    print(f"⚠️ Warning: Registration in discovery failed: {reg_e}")
+
+                loop.close()
                 return send_file(
                     file_path,
                     as_attachment=True,
                     download_name=f"{track_artist} - {track_name}.{file_format}"
                 )
             else:
+                loop.close()
                 error_msg = result.get('error') if result else "Unknown error"
                 return jsonify({'error': f"Download failed: {error_msg}"}), 500
         
@@ -289,12 +381,33 @@ def download():
         
         if result and result.get('file_path') and os.path.exists(result['file_path']):
             file_path = result['file_path']
+            
+            # РЕГИСТРАЦИЯ В DISCOVER
+            try:
+                # 1. Загружаем в Telegram Storage
+                print(f"📤 Auto-uploading web download to Telegram: {track_info['name']}")
+                upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_info['artist']} - {track_info['name']}")
+                if upload_result and upload_result.get('file_id'):
+                    file_id = upload_result['file_id']
+                    loop.run_until_complete(db.update_track_cache(track_id, file_id, file_format, quality))
+                    loop.run_until_complete(db.save_telegram_file(
+                        track_id=track_id, 
+                        file_id=file_id, 
+                        artist=track_info['artist'], 
+                        track_name=track_info['name'], 
+                        file_size=result.get('file_size', 0)
+                    ))
+            except Exception as reg_e:
+                print(f"⚠️ Warning: Registration in discovery failed: {reg_e}")
+
+            loop.close()
             return send_file(
                 file_path,
                 as_attachment=True,
                 download_name=f"{track_info['artist']} - {track_info['name']}.{file_format}"
             )
         else:
+            loop.close()
             error_msg = result.get('error') if result else "Unknown error"
             return jsonify({'error': f"Download failed: {error_msg}"}), 500
     

@@ -354,6 +354,7 @@ body {
     background: var(--spotify-dark);
     outline: none;
     -webkit-appearance: none;
+    appearance: none;
     cursor: pointer;
     transition: background 0.2s;
 }
@@ -446,6 +447,7 @@ body {
     background: var(--spotify-dark);
     outline: none;
     -webkit-appearance: none;
+    appearance: none;
 }
 
 .volume-slider::-webkit-slider-thumb {
@@ -533,6 +535,42 @@ body {
     margin-top: 48px;
     padding-top: 24px;
     border-top: 1px solid var(--spotify-gray);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.sync-btn {
+    background: transparent;
+    border: 1px solid var(--spotify-light-gray);
+    color: var(--spotify-light-gray);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all var(--transition-fast);
+}
+
+.sync-btn:hover {
+    color: var(--spotify-white);
+    border-color: var(--spotify-white);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sync-btn svg {
+    transition: transform 0.5s ease;
+}
+
+.sync-btn.spinning svg {
+    transform: rotate(360deg);
 }
 
 .username {
@@ -982,6 +1020,7 @@ textarea.text-input {
     font-size: 14px;
     color: var(--spotify-light-gray);
 }
+
 /* Player Controls */
 .player-controls button {
     background: none;
