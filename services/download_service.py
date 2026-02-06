@@ -14,6 +14,10 @@ class DownloadService:
         self.download_dir = os.path.join(base_dir, download_dir)
         self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
         os.makedirs(self.download_dir, exist_ok=True)
+        if os.path.exists(self.cookies_path):
+            print(f"🍪 YouTube cookie file found: {self.cookies_path}")
+        else:
+            print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
@@ -59,10 +63,14 @@ class DownloadService:
             # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android', 'web_creator', 'tv', 'mweb'],
-                    'skip': ['hls', 'dash', 'translated_subs']
+                    'player_client': ['android'],
+                    'skip': ['hls', 'dash', 'translated_subs'],
+                    'include_dash_manifest': False,
+                    'include_hls_manifest': False,
                 }
             },
+            'socket_timeout': 30,
+            'retries': 5,
             'geo_bypass': True,
             'nocheckcertificate': True,
             'age_limit': 99,  # Обход возрастных ограничений
@@ -176,10 +184,14 @@ class DownloadService:
             # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android', 'web_creator', 'tv', 'mweb'],
-                    'skip': ['hls', 'dash', 'translated_subs']
+                    'player_client': ['android'],
+                    'skip': ['hls', 'dash', 'translated_subs'],
+                    'include_dash_manifest': False,
+                    'include_hls_manifest': False,
                 }
             },
+            'socket_timeout': 30,
+            'retries': 5,
             'geo_bypass': True,
             'nocheckcertificate': True,
             'age_limit': 99,  # Обход возрастных ограничений
