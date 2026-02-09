@@ -564,7 +564,8 @@ class DatabaseManager:
                     track = Track(
                         id=track_id,
                         name=track_name or "Unknown Track",
-                        artist=artist or "Unknown Artist"
+                        artist=artist or "Unknown Artist",
+                        spotify_url=f"https://open.spotify.com/track/{track_id}"  # Required field
                     )
                     session.add(track)
                     # flush чтобы SQLAlchemy увидел трек перед вставкой файла
