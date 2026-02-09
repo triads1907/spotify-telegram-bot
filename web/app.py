@@ -322,13 +322,32 @@ def download():
                         unique_string = f"{track_artist}_{track_name}".lower()
                         track_id = hashlib.md5(unique_string.encode()).hexdigest()[:16]
                     
-                    # 1. Создаем трек в БД
-                    loop.run_until_complete(db.get_or_create_track({
+                    # 1. Пытаемся обогатить метаданными из Spotify (для изображений)
+                    track_data = {
                         'id': track_id,
                         'name': track_name,
                         'artist': track_artist,
                         'spotify_url': f"https://open.spotify.com/search/{track_artist} {track_name}"
-                    }))
+                    }
+                    
+                    try:
+                        # Ищем трек в Spotify чтобы получить изображение
+                        spotify_tracks = loop.run_until_complete(
+                            spotify_service.search_tracks(f"{track_artist} {track_name}", limit=1)
+                        )
+                        if spotify_tracks and len(spotify_tracks) > 0:
+                            spotify_track = spotify_tracks[0]
+                            # Обогащаем данными из Spotify
+                            track_data['image_url'] = spotify_track.get('image')
+                            track_data['spotify_url'] = spotify_track.get('spotify_url', track_data['spotify_url'])
+                            track_data['album'] = spotify_track.get('album')
+                            track_data['duration_ms'] = spotify_track.get('duration_ms')
+                            print(f"✅ Enriched track with Spotify metadata: {track_name}")
+                    except Exception as spotify_err:
+                        print(f"⚠️ Could not fetch Spotify metadata: {spotify_err}")
+                    
+                    # 2. Создаем трек в БД
+                    loop.run_until_complete(db.get_or_create_track(track_data))
                     
                     # 2. Загружаем в Telegram Storage (чтобы появился в Discover)
                     print(f"📤 Auto-uploading web download to Telegram: {track_name}")
