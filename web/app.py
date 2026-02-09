@@ -661,10 +661,18 @@ def prepare_stream():
         file_id = loop.run_until_complete(db.get_cached_file_id(track_id, quality='192'))
         
         if not file_id:
-            # Проверяем старую таблицу TelegramFile (для совместимости)
+            # Проверяем старую таблицу TelegramFile (по ID)
             telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
             if telegram_file:
                 file_id = telegram_file.file_id
+            else:
+                # НОВОЕ: Поиск по имени (если ID из поиска Spotify не совпал с ID из Sync)
+                # Это ГАРАНТИРУЕТ отсутствие дубликатов в канале
+                print(f"🔍 Looked for {track_id} by ID, not found. Trying by name: {artist} - {track_name}")
+                telegram_file_by_name = loop.run_until_complete(db.get_telegram_file_by_name(artist, track_name))
+                if telegram_file_by_name:
+                    file_id = telegram_file_by_name.file_id
+                    print(f"✅ Found existing track in Telegram by name (ID mismatch bypassed)")
         
         if file_id:
             # Файл уже в Telegram!

@@ -3,7 +3,7 @@ from __future__ import annotations
 Менеджер базы данных для работы с SQLite
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, delete, event
+from sqlalchemy import select, delete, event, func
 from sqlalchemy.engine import Engine
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -398,7 +398,19 @@ class DatabaseManager:
                 await session.commit()
                 return True
             return False
-    
+                
+    async def is_library_empty(self) -> bool:
+        """Проверить, пуста ли библиотека треков"""
+        async with self.async_session() as session:
+            result = await session.execute(select(TelegramFile).limit(1))
+            return result.scalar_one_or_none() is None
+
+    async def is_backup_logs_empty(self) -> bool:
+        """Проверить, пуста ли таблица логов бэкапов"""
+        async with self.async_session() as session:
+            result = await session.execute(select(BackupLog).limit(1))
+            return result.scalar_one_or_none() is None
+            
     async def get_user_quality(self, user_id: int) -> str:
         """Получить предпочитаемое качество пользователя"""
         async with self.async_session() as session:
@@ -636,10 +648,21 @@ class DatabaseManager:
             )
             return result.scalar_one_or_none()
     
-    async def telegram_file_exists(self, track_id: str) -> bool:
+    async def is_telegram_file_cached(self, track_id: str) -> bool:
         """Проверить, есть ли файл в Telegram Storage"""
         telegram_file = await self.get_telegram_file(track_id)
         return telegram_file is not None
+
+    async def get_telegram_file_by_name(self, artist: str, track_name: str) -> Optional[TelegramFile]:
+        """Найти файл в Telegram по имени артиста и названию"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TelegramFile)
+                .where(func.lower(TelegramFile.artist) == artist.lower())
+                .where(func.lower(TelegramFile.track_name) == track_name.lower())
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
 
     # ========== BACKUP LOGS ==========
     

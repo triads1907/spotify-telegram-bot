@@ -48,13 +48,23 @@ class DatabaseBackupService:
                 local_size = os.path.getsize(self.db_path)
                 backup_size = backup_info.get('file_size', 0)
                 
-                # Если файл подозрительно маленький (свежесозданный) или бэкап в Telegram ЗНАЧИТЕЛЬНО больше
-                if local_size < 32768: # 32KB - это примерно пустая БД со схемой
+                # Проверяем, пуста ли библиотека в текущей БД
+                is_empty = False
+                if self.db:
+                    try:
+                        is_empty = await self.db.is_library_empty()
+                    except Exception as e:
+                         print(f"⚠️ Error checking library state: {e}")
+                
+                # Если библиотека пуста (результат деплоя), или файл подозрительно маленький
+                if is_empty:
+                    print(f"⚠️  Local library is EMPTY. Forcing restoration from Telegram...")
+                elif local_size < 32768: # 32KB - это примерно пустая БД со схемой
                     print(f"⚠️  Local database is too small ({local_size} bytes), overwriting with backup...")
                 elif backup_size > local_size + 1024: # Если бэкап больше хотя бы на 1KB
                     print(f"🔄 Backup in Telegram ({backup_size} bytes) is larger than local DB ({local_size} bytes). Restoring...")
                 else:
-                    print(f"✅ Local database exists ({local_size} bytes) and is equal or larger than backup ({backup_size} bytes). Skipping restoration.")
+                    print(f"✅ Local database exists and has data. Skipping restoration.")
                     return False
             
             # Скачиваем backup
@@ -254,8 +264,8 @@ class DatabaseBackupService:
                 all_ids = [log.message_id for log in logs]
                 print(f"📊 Found {len(all_ids)} backup logs in database")
             
-            # Добавляем IDs из текущей сессии
-            all_ids = list(set(all_ids + self.backup_message_ids))
+            # Добавляем IDs из текущей сессии и нормализуем к int для корректной сортировки
+            all_ids = list(set([int(mid) for mid in all_ids] + [int(mid) for mid in self.backup_message_ids]))
             
             # Сортируем по возрастанию (от старых к новым)
             all_ids.sort()
