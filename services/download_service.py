@@ -12,7 +12,20 @@ class DownloadService:
         # Всегда используем абсолютный путь относительно корня проекта
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.download_dir = os.path.join(base_dir, download_dir)
-        self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
+        
+        # Проверяем оба варианта названия файла cookies
+        cookies_txt = os.path.join(base_dir, "cookies.txt")
+        youtube_cookies_txt = os.path.join(base_dir, "youtube_cookies.txt")
+        
+        # Используем тот, который существует (приоритет у cookies.txt)
+        if os.path.exists(cookies_txt):
+            self.cookies_path = cookies_txt
+        elif os.path.exists(youtube_cookies_txt):
+            self.cookies_path = youtube_cookies_txt
+        else:
+            # По умолчанию используем cookies.txt для создания
+            self.cookies_path = cookies_txt
+        
         os.makedirs(self.download_dir, exist_ok=True)
         
         # Проверяем переменную окружения для Railway деплоя
@@ -32,7 +45,7 @@ class DownloadService:
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
             print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
-            print(f"   Set YOUTUBE_COOKIES_BASE64 environment variable or add youtube_cookies.txt file")
+            print(f"   Set YOUTUBE_COOKIES_BASE64 environment variable or add cookies.txt/youtube_cookies.txt file")
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
