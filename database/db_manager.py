@@ -136,18 +136,44 @@ class DatabaseManager:
     # ========== ТРЕКИ ==========
     
     async def get_or_create_track(self, track_data: dict) -> Track:
-        """Получить или создать трек"""
+        """Получить или создать трек, обогащая существующие треки недостающими данными"""
         async with self.async_session() as session:
             track_id = track_data['id']
             result = await session.execute(select(Track).where(Track.id == track_id))
             track = result.scalar_one_or_none()
             
             if not track:
+                # Создаем новый трек
                 track = Track(**track_data)
                 session.add(track)
-                await session.commit()
-                await session.refresh(track)
+            else:
+                # Обновляем существующий трек недостающими данными
+                # Это важно для треков, созданных без полных метаданных
+                updated = False
+                
+                # Обновляем image_url если его нет, а в новых данных есть
+                if not track.image_url and track_data.get('image_url'):
+                    track.image_url = track_data['image_url']
+                    updated = True
+                
+                # Обновляем другие важные поля если они отсутствуют
+                if not track.album and track_data.get('album'):
+                    track.album = track_data['album']
+                    updated = True
+                
+                if not track.duration_ms and track_data.get('duration_ms'):
+                    track.duration_ms = track_data['duration_ms']
+                    updated = True
+                
+                if not track.popularity and track_data.get('popularity'):
+                    track.popularity = track_data['popularity']
+                    updated = True
+                
+                if updated:
+                    print(f"✅ Обогащен трек {track_id} новыми метаданными")
             
+            await session.commit()
+            await session.refresh(track)
             return track
     
     async def get_track(self, track_id: str) -> Optional[Track]:
