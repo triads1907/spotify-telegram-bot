@@ -14,7 +14,7 @@ class DownloadService:
         self.download_dir = os.path.join(base_dir, download_dir)
         
         # Путь к файлу кук (всегда используем абсолютный путь)
-        self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
+        self.cookies_path = os.path.join(base_dir, "cookies.txt")
         
         os.makedirs(self.download_dir, exist_ok=True)
         
