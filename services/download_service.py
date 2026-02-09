@@ -23,20 +23,27 @@ class DownloadService:
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
         if cookies_env:
             try:
-                # Декодируем и сохраняем cookies из переменной окружения
-                # Мы ВСЕГДА перезаписываем файл если есть переменная окружения, чтобы гарантировать свежесть
+                # Очищаем от пробелов и переносов (частая ошибка при копировании)
+                cookies_env = cookies_env.strip().replace('\n', '').replace('\r', '')
+                
                 print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
                 # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
+                is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
+                
                 if len(cookies_content) > 10:
                     preview = cookies_content[:30].replace('\n', ' ')
                     print(f"📊 Decoded cookie content preview: {preview}...")
                     print(f"📏 Decoded size: {len(cookies_content)} bytes")
+                    if not is_netscape:
+                        print(f"⚠️ WARNING: Cookies do NOT look like Netscape format! Download might fail.")
+                    else:
+                        print(f"✅ Cookie format looks valid (Netscape)")
                 
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
-                print(f"✅ YouTube cookies restored/updated from environment variable to: {self.cookies_path}")
+                print(f"✅ YouTube cookies restored/updated to: {self.cookies_path}")
             except Exception as e:
                 print(f"❌ Failed to restore cookies from environment: {e}")
                 import traceback
@@ -92,7 +99,7 @@ class DownloadService:
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web_music', 'web', 'android', 'ios'],
+                    'player_client': ['ios', 'web_music', 'android', 'web'],
                     'skip': ['translated_subs'],
                 }
             },
@@ -112,6 +119,9 @@ class DownloadService:
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
+        has_cookies = os.path.exists(self.cookies_path)
+        print(f"🚀 Starting download attempt 1 (Cookies: {'YES' if has_cookies else 'NO'})")
+        
         try:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -121,6 +131,23 @@ class DownloadService:
                 ydl_opts,
                 file_format
             )
+            
+            # Проверяем на ошибку бота
+            if result and isinstance(result, dict) and 'error' in result:
+                err = result['error']
+                if "confirm you're not a bot" in err or "Sign in" in err:
+                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with mobile clients...")
+                    # Attempt 2: Purely mobile (harder to detect)
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
+                    
+                    result = await loop.run_in_executor(
+                        None, 
+                        self._download_sync, 
+                        search_query, 
+                        ydl_opts,
+                        file_format
+                    )
+            
             return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
@@ -139,7 +166,7 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web_music', 'web', 'android', 'ios'],
+                    'player_client': ['ios', 'android', 'web_music'],
                     'skip': ['translated_subs'],
                 }
             },
