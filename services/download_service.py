@@ -72,7 +72,8 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            'format': 'bestaudio/best',
+            # Более гибкий выбор формата с fallback опциями
+            'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
@@ -91,10 +92,8 @@ class DownloadService:
             # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android'],
+                    'player_client': ['android', 'web'],  # Добавили web как fallback
                     'skip': ['hls', 'dash', 'translated_subs'],
-                    'include_dash_manifest': False,
-                    'include_hls_manifest': False,
                 }
             },
             'socket_timeout': 30,
