@@ -288,6 +288,9 @@ def search_by_url(url):
 @app.route('/api/download', methods=['POST'])
 def download():
     """Скачивание трека"""
+    # Создаем один loop на весь запрос
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         data = request.json
         track_id = data.get('track_id')
@@ -298,9 +301,7 @@ def download():
         
         # Если есть имя и исполнитель, используем их напрямую
         if track_name and track_artist:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
+            # 1. Скачиваем файл
             result = loop.run_until_complete(
                 download_service.search_and_download(
                     track_artist,
@@ -309,7 +310,6 @@ def download():
                     file_format
                 )
             )
-            loop.close()
             
             if result and result.get('file_path') and os.path.exists(result['file_path']):
                 file_path = result['file_path']
@@ -346,33 +346,29 @@ def download():
                         ))
                 except Exception as reg_e:
                     print(f"⚠️ Warning: Registration in discovery failed: {reg_e}")
-
-                loop.close()
                 return send_file(
                     file_path,
                     as_attachment=True,
                     download_name=f"{track_artist} - {track_name}.{file_format}"
                 )
             else:
-                loop.close()
                 error_msg = result.get('error') if result else "Unknown error"
+                loop.close()
                 return jsonify({'error': f"Download failed: {error_msg}"}), 500
         
         # Иначе используем track_id
         if not track_id:
+            loop.close()
             return jsonify({'error': 'Track ID or name/artist is required'}), 400
         
-        # Скачивание трека по ID
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Получаем информацию о треке
+        # 1. Получаем информацию о треке (ВАЖНО: До скачивания для метаданных)
         track_info = loop.run_until_complete(spotify_service.get_track_info(track_id))
         
         if not track_info:
+            loop.close()
             return jsonify({'error': 'Track not found'}), 404
-        
-        # Скачиваем трек
+            
+        # 2. Скачиваем трек
         result = loop.run_until_complete(
             download_service.search_and_download(
                 track_info['artist'],
@@ -381,14 +377,21 @@ def download():
                 file_format
             )
         )
-        loop.close()
         
         if result and result.get('file_path') and os.path.exists(result['file_path']):
             file_path = result['file_path']
             
             # РЕГИСТРАЦИЯ В DISCOVER
             try:
-                # 1. Загружаем в Telegram Storage
+                # 1. ГАРАНТИРУЕМ ЧТО ТРЕК ЕСТЬ В БД (Важно для Foreign Key в cache)
+                loop.run_until_complete(db.get_or_create_track({
+                    'id': track_id,
+                    'name': track_info['name'],
+                    'artist': track_info['artist'],
+                    'spotify_url': f"https://open.spotify.com/track/{track_id}"
+                }))
+
+                # 2. Загружаем в Telegram Storage
                 print(f"📤 Auto-uploading web download to Telegram: {track_info['name']}")
                 upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_info['artist']} - {track_info['name']}")
                 if upload_result and upload_result.get('file_id'):
@@ -411,8 +414,8 @@ def download():
                 download_name=f"{track_info['artist']} - {track_info['name']}.{file_format}"
             )
         else:
-            loop.close()
             error_msg = result.get('error') if result else "Unknown error"
+            loop.close()
             return jsonify({'error': f"Download failed: {error_msg}"}), 500
     
     except Exception as e:

@@ -392,6 +392,14 @@ class DatabaseManager:
                                  file_format: str = 'mp3', quality: str = '192'):
         """Обновить кэш трека (сохранить telegram_file_id в TrackCache)"""
         async with self.async_session() as session:
+            # Сначала проверяем, существует ли основной трек (Foreign Key integrity)
+            track_result = await session.execute(select(Track).where(Track.id == track_id))
+            track = track_result.scalar_one_or_none()
+            
+            if not track:
+                print(f"⚠️ Cannot update cache: Track {track_id} not found in database!")
+                return False
+
             # Проверяем, есть ли уже такой кэш (чтобы не дублировать)
             result = await session.execute(
                 select(TrackCache)
@@ -414,11 +422,8 @@ class DatabaseManager:
                 session.add(cache_entry)
             
             # Также обновляем время кэширования в основном треке для статистики
-            track_result = await session.execute(select(Track).where(Track.id == track_id))
-            track = track_result.scalar_one_or_none()
-            if track:
-                track.telegram_file_id = telegram_file_id # Совместимость со старым кодом
-                track.cached_at = datetime.utcnow()
+            track.telegram_file_id = telegram_file_id # Совместимость со старым кодом
+            track.cached_at = datetime.utcnow()
 
             await session.commit()
             return True
