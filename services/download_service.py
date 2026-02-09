@@ -72,8 +72,8 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Максимально простой выбор формата для совместимости
-            'format': 'best',
+            # Приоритет аудио-форматам, чтобы избежать слишком больших видео-файлов
+            'format': 'bestaudio/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
@@ -89,10 +89,9 @@ class DownloadService:
             'extract_flat': False,
             'default_search': 'ytsearch1',
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],  # Добавили web как fallback
+                    'player_client': ['android', 'web'],
                     'skip': ['hls', 'dash', 'translated_subs'],
                 }
             },

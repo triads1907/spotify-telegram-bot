@@ -686,8 +686,10 @@ def prepare_stream():
         upload_result = get_telegram_storage().upload_file(file_path, caption)
         
         if not upload_result or not upload_result.get('file_id'):
+            error_details = upload_result.get('error') if upload_result else "Unknown upload error"
+            print(f"❌ Failed to upload to Telegram Storage: {error_details}")
             loop.close()
-            return jsonify({'error': 'Failed to upload to Telegram Storage'}), 500
+            return jsonify({'error': f'Failed to upload to Telegram Storage: {error_details}'}), 500
         
         
         # 4. Регистрируем трек в БД с изображением из YouTube

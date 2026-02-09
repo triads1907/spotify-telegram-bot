@@ -65,8 +65,9 @@ class TelegramStorageService:
                         'duration': audio.get('duration', 0)
                     }
             
-            print(f"❌ Failed to upload file to Telegram: {response.text}")
-            return None
+            error_msg = response.text
+            print(f"❌ Failed to upload file to Telegram: {error_msg}")
+            return {'error': error_msg}
                 
         except Exception as e:
             print(f"❌ Error uploading to Telegram Storage: {e}")
