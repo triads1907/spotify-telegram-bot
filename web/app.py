@@ -689,7 +689,18 @@ def prepare_stream():
             loop.close()
             return jsonify({'error': 'Failed to upload to Telegram Storage'}), 500
         
-        # 4. Сохраняем в обе таблицы кэша для максимальной совместимости
+        
+        # 4. Регистрируем трек в БД с изображением из YouTube
+        track_data = {
+            'id': track_id,
+            'name': track_name,
+            'artist': artist,
+            'spotify_url': f"https://open.spotify.com/search/{artist} {track_name}",
+            'image_url': result.get('thumbnail')  # YouTube thumbnail как изображение
+        }
+        loop.run_until_complete(db.get_or_create_track(track_data))
+        
+        # 5. Сохраняем в обе таблицы кэша для максимальной совместимости
         file_id = upload_result['file_id']
         loop.run_until_complete(
             db.update_track_cache(
@@ -710,10 +721,10 @@ def prepare_stream():
             )
         )
         
-        # 5. Получаем прямую ссылку
+        # 6. Получаем прямую ссылку
         file_url = get_telegram_storage().get_file_url(upload_result['file_id'])
         
-        # 6. Очистка временного файла
+        # 7. Очистка временного файла
         try:
             download_service.cleanup_file(file_path)
         except:
