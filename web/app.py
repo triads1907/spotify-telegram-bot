@@ -381,9 +381,10 @@ def download():
         if result and result.get('file_path') and os.path.exists(result['file_path']):
             file_path = result['file_path']
             
+
             # РЕГИСТРАЦИЯ В DISCOVER
             try:
-                # 1. ГАРАНТИРУЕМ ЧТО ТРЕК ЕСТЬ В БД (Важно для Foreign Key в cache)
+                # 1. ГАРАНТИРУЕМ ЧТО ТРЕК ЕСТЬ В БД (Важно для Foreign Key в cache/files)
                 loop.run_until_complete(db.get_or_create_track({
                     'id': track_id,
                     'name': track_info['name'],
@@ -396,13 +397,15 @@ def download():
                 upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_info['artist']} - {track_info['name']}")
                 if upload_result and upload_result.get('file_id'):
                     file_id = upload_result['file_id']
+                    # Сохраняем в кэш и в Discovery-таблицу
                     loop.run_until_complete(db.update_track_cache(track_id, file_id, file_format, quality))
                     loop.run_until_complete(db.save_telegram_file(
                         track_id=track_id, 
                         file_id=file_id, 
                         artist=track_info['artist'], 
                         track_name=track_info['name'], 
-                        file_size=result.get('file_size', 0)
+                        file_size=result.get('file_size', 0),
+                        file_path=upload_result.get('file_id') # Используем file_id как путь для совместимости
                     ))
             except Exception as reg_e:
                 print(f"⚠️ Warning: Registration in discovery failed: {reg_e}")
@@ -415,10 +418,13 @@ def download():
             )
         else:
             error_msg = result.get('error') if result else "Unknown error"
-            loop.close()
+            if 'loop' in locals() and not loop.is_closed():
+                loop.close()
             return jsonify({'error': f"Download failed: {error_msg}"}), 500
     
     except Exception as e:
+        if 'loop' in locals() and not loop.is_closed():
+            loop.close()
         print(f"❌ Download error: {e}")
         import traceback
         traceback.print_exc()

@@ -3,7 +3,8 @@ from __future__ import annotations
 Менеджер базы данных для работы с SQLite
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, event
+from sqlalchemy.engine import Engine
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -23,6 +24,15 @@ class DatabaseManager:
             echo=False,
             connect_args=connect_args
         )
+        
+        # Включаем Foreign Keys на уровне драйвера SQLite для КАЖДОГО соединения
+        if "sqlite" in self.database_url:
+            @event.listens_for(Engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
         self.async_session = async_sessionmaker(
             self.engine, 
             class_=AsyncSession, 
@@ -543,6 +553,23 @@ class DatabaseManager:
                 await session.commit()
                 return existing
             else:
+                # ГАРАНТИРУЕМ, ЧТО ТРЕК ЕСТЬ В БД (Foreign Key integrity)
+                track_result = await session.execute(select(Track).where(Track.id == track_id))
+                track = track_result.scalar_one_or_none()
+                
+                if not track:
+                    # Если трека нет, создаем минимальную запись чтобы не упасть по Foreign Key
+                    # Это запасной вариант на случай гонки процессов
+                    print(f"⚠️ Track {track_id} not found during file save. Creating minimal record.")
+                    track = Track(
+                        id=track_id,
+                        name=track_name or "Unknown Track",
+                        artist=artist or "Unknown Artist"
+                    )
+                    session.add(track)
+                    # flush чтобы SQLAlchemy увидел трек перед вставкой файла
+                    await session.flush()
+
                 # Создаем новую запись
                 telegram_file = TelegramFile(
                     track_id=track_id,
