@@ -72,32 +72,6 @@ def ensure_db_initialized():
                 # Пересоздаем engine, чтобы он отцепился от старого файла и прицепился к новому
                 loop.run_until_complete(db.reconnect())
             
-            # 3. FAILSAFE: Если библиотека пустая (нет бэкапа или он пустой), сканируем канал
-            if loop.run_until_complete(db.is_library_empty()):
-                print("⚠️ Web App: Library is EMPTY after restoration attempt. Starting EMERGENCY DEEP SYNC...")
-                try:
-                    from services.telegram_storage_sync import DeepSyncService
-                    storage = get_telegram_storage()
-                    # Используем глобальные db и download_service
-                    sync_service = DeepSyncService(storage, db, download_service)
-                    
-                    # Сканируем последние 200 сообщений (этого обычно достаточно для восстановления недавних треков)
-                    print("📊 Scanning last 200 messages from channel...")
-                    found_count = loop.run_until_complete(sync_service.run_deep_sync(range_size=200))
-                    
-                    if found_count > 0:
-                        print(f"✅ Emergency Sync found {found_count} tracks! Creating new backup...")
-                        loop.run_until_complete(backup.backup_to_telegram())
-                    else:
-                        print("⚠️ Emergency Sync found no tracks. Channel might be empty or inaccessible.")
-                        
-                except Exception as sync_e:
-                     print(f"❌ Emergency Deep Sync failed: {sync_e}")
-                     import traceback
-                     traceback.print_exc()
-            else:
-                print("✅ Library check passed (not empty)")
-            
             loop.close()
             db_initialized = True
             print("✅ Web App: Database is fully synchronized and ready")
