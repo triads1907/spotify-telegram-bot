@@ -14,10 +14,25 @@ class DownloadService:
         self.download_dir = os.path.join(base_dir, download_dir)
         self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
         os.makedirs(self.download_dir, exist_ok=True)
+        
+        # Проверяем переменную окружения для Railway деплоя
+        import base64
+        cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
+        if cookies_env and not os.path.exists(self.cookies_path):
+            try:
+                # Декодируем и сохраняем cookies из переменной окружения
+                cookies_content = base64.b64decode(cookies_env).decode('utf-8')
+                with open(self.cookies_path, 'w', encoding='utf-8') as f:
+                    f.write(cookies_content)
+                print(f"🍪 YouTube cookies restored from environment variable to: {self.cookies_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to restore cookies from environment: {e}")
+        
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
             print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
+            print(f"   Set YOUTUBE_COOKIES_BASE64 environment variable or add youtube_cookies.txt file")
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
