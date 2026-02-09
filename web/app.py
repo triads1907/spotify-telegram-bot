@@ -633,6 +633,7 @@ def prepare_stream():
         artist = data.get('artist', '')
         track_name = data.get('name', '')
         track_id = data.get('id', '')
+        image_url = data.get('image') # Spotify image URL from search result
         
         if not artist or not track_name:
             return jsonify({'error': 'Artist and track name required'}), 400
@@ -708,13 +709,15 @@ def prepare_stream():
             return jsonify({'error': f'Failed to upload to Telegram Storage: {error_details}'}), 500
         
         
-        # 4. Регистрируем трек в БД с изображением из YouTube
+        # 4. Регистрируем трек в БД. Приоритет: Spotify image > YouTube thumbnail
+        final_image_url = image_url or result.get('thumbnail')
+        
         track_data = {
             'id': track_id,
             'name': track_name,
             'artist': artist,
             'spotify_url': f"https://open.spotify.com/search/{artist} {track_name}",
-            'image_url': result.get('thumbnail')  # YouTube thumbnail как изображение
+            'image_url': final_image_url
         }
         loop.run_until_complete(db.get_or_create_track(track_data))
         
@@ -736,7 +739,7 @@ def prepare_stream():
                 file_size=upload_result.get('file_size'),
                 artist=artist,
                 track_name=track_name,
-                image_url=result.get('thumbnail')
+                image_url=final_image_url
             )
         )
         

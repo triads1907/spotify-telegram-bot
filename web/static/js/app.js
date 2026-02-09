@@ -302,7 +302,8 @@ async function playFromYouTube(track) {
             body: JSON.stringify({
                 id: track.id,
                 artist: track.artist,
-                name: track.name
+                name: track.name,
+                image: track.image
             })
         });
 
