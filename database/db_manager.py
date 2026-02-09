@@ -39,6 +39,23 @@ class DatabaseManager:
             expire_on_commit=False
         )
     
+    async def reconnect(self):
+        """Пересоздать engine (полезно после восстановления БД из бэкапа)"""
+        if self.engine:
+            await self.engine.dispose()
+        
+        db_url = config.DATABASE_URL
+        if db_url.startswith('sqlite://'):
+            db_url = db_url.replace('sqlite://', 'sqlite+aiosqlite://')
+            
+        self.engine = create_async_engine(
+            db_url,
+            echo=False,
+            connect_args={"timeout": 30}
+        )
+        self.async_session = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        print("🔌 Database engine re-initialized")
+
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         async with self.engine.begin() as conn:

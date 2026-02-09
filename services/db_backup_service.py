@@ -175,25 +175,72 @@ class DatabaseBackupService:
             Dict с информацией о backup или None
         """
         try:
-            # Получаем закрепленное сообщение из канала
+            # 1. Сначала пробуем закрепленное сообщение (самый быстрый и надежный способ)
             message = self.storage.get_pinned_message()
             
-            if not message or not message.get('document'):
-                # Если закрепленного сообщения нет, попробуем поискать в последних сообщениях (но это менее надежно)
-                print("ℹ️  No pinned message found in channel")
-                return None
+            if message and message.get('document'):
+                doc = message['document']
+                if doc.get('file_name', '').endswith('.db'):
+                    print(f"✅ Found backup in pinned message: {doc.get('file_name')}")
+                    return {
+                        'file_id': doc['file_id'],
+                        'file_name': doc.get('file_name'),
+                        'file_size': doc.get('file_size'),
+                        'date': message.get('date')
+                    }
             
-            doc = message['document']
-            # Проверяем, что это файл БД
-            if doc.get('file_name', '').endswith('.db'):
-                print(f"✅ Found backup in pinned message: {doc.get('file_name')}")
-                return {
-                    'file_id': doc['file_id'],
-                    'file_name': doc.get('file_name'),
-                    'file_size': doc.get('file_size'),
-                    'date': message.get('date')
-                }
+            # 2. ФАЛЛБЭК: Если закрепа нет, поищем в последних сообщениях чрез DeepSync-подобный механизм
+            print("🔍 No valid backup in pinned message. Scanning last 100 messages for backups...")
             
+            # Нам нужно получить текущий ID головы канала
+            head_id = 0
+            try:
+                # Отправляем и удаляем сообщение чтобы узнать текущий ID
+                resp = httpx.post(f"{self.storage.base_url}/sendMessage", data={
+                    'chat_id': self.storage.channel_id,
+                    'text': '🔍 Backup Search Probe'
+                })
+                if resp.status_code == 200:
+                    msg = resp.json().get('result', {})
+                    head_id = msg.get('message_id', 0)
+                    httpx.post(f"{self.storage.base_url}/deleteMessage", data={
+                        'chat_id': self.storage.channel_id,
+                        'message_id': head_id
+                    })
+            except:
+                pass
+            
+            if head_id > 0:
+                # Сканируем назад
+                for msg_id in range(head_id, max(0, head_id - 100), -1):
+                    # Используем forwardMessage для проверки содержимого (трюк DeepSync)
+                    try:
+                        # Получаем ID бота для форварда самому себе
+                        bot_info = httpx.get(f"{self.storage.base_url}/getMe").json()
+                        bot_id = bot_info.get('result', {}).get('id')
+                        
+                        resp = httpx.post(f"{self.storage.base_url}/forwardMessage", data={
+                            'chat_id': bot_id,
+                            'from_chat_id': self.storage.channel_id,
+                            'message_id': msg_id,
+                            'disable_notification': True
+                        })
+                        
+                        if resp.status_code == 200:
+                            msg_data = resp.json().get('result', {})
+                            doc = msg_data.get('document')
+                            if doc and doc.get('file_name', '').endswith('.db'):
+                                print(f"✅ Found backup via scan at message {msg_id}: {doc['file_name']}")
+                                return {
+                                    'file_id': doc['file_id'],
+                                    'file_name': doc['file_name'],
+                                    'file_size': doc.get('file_size'),
+                                    'date': msg_data.get('date')
+                                }
+                    except:
+                        continue
+            
+            print("ℹ️  No database backup found in Telegram storage")
             return None
             
         except Exception as e:

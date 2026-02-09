@@ -58,21 +58,29 @@ def ensure_db_initialized():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            print("📦 Web App: Checking for database restoration...")
-            # Попытка восстановления из Telegram перед инициализацией
-            backup = get_backup_service()
-            loop.run_until_complete(backup.restore_from_telegram())
-            
-            # Инициализация (создание таблиц, если не созданы)
+            # 1. Сначала просто инициализируем саму структуру БД (создаем таблицы если их нет)
+            print("📦 Web App: Preliminary DB structure check...")
             loop.run_until_complete(db.init_db())
+            
+            # 2. Теперь проверяем, нужно ли восстановление из Telegram
+            print("📦 Web App: Checking for database restoration from Telegram...")
+            backup = get_backup_service()
+            restored = loop.run_until_complete(backup.restore_from_telegram())
+            
+            if restored:
+                print("🔄 Web App: Database restored! Re-initializing engine to pick up new data...")
+                # Пересоздаем engine, чтобы он отцепился от старого файла и прицепился к новому
+                loop.run_until_complete(db.reconnect())
+            
             loop.close()
             db_initialized = True
-            print("✅ Web App: Database ready")
+            print("✅ Web App: Database is fully synchronized and ready")
         except Exception as e:
-            print(f"⚠️  Web App: Database init warning: {e}")
+            print(f"❌ Web App: Database init failed: {e}")
             import traceback
             traceback.print_exc()
-            db_initialized = True # Помечаем как инициализированную, чтобы не входить в цикл при ошибках
+            # Пытаемся продолжить работу, пометив как инициализированную
+            db_initialized = True
 
 @app.before_request
 def before_request():
