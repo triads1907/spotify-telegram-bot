@@ -105,8 +105,12 @@ def sync_deep():
         range_size = data.get('range', 500)
         
         count = loop.run_until_complete(sync_service.run_deep_sync(range_size=range_size))
-        loop.close()
         
+        # Сразу делаем backup после синхронизации
+        backup_svc = get_backup_service()
+        loop.run_until_complete(backup_svc.backup_to_telegram())
+        
+        loop.close()
         return jsonify({'success': True, 'found_count': count})
         
     except Exception as e:
@@ -205,6 +209,11 @@ def sync_library():
                 return added_count
         
         count = loop.run_until_complete(run_sync())
+        
+        # Сразу делаем backup после синхронизации
+        backup_svc = get_backup_service()
+        loop.run_until_complete(backup_svc.backup_to_telegram())
+        
         loop.close()
         return jsonify({'success': True, 'added_count': count})
         
