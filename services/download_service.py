@@ -30,7 +30,8 @@ class DownloadService:
                 
                 # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
                 if len(cookies_content) > 10:
-                    print(f"📊 Decoded cookie content preview: {cookies_content[:30].replace('\n', ' ')}...")
+                    preview = cookies_content[:30].replace('\n', ' ')
+                    print(f"📊 Decoded cookie content preview: {preview}...")
                     print(f"📏 Decoded size: {len(cookies_content)} bytes")
                 
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
