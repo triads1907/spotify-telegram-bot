@@ -13,18 +13,8 @@ class DownloadService:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.download_dir = os.path.join(base_dir, download_dir)
         
-        # Проверяем оба варианта названия файла cookies
-        cookies_txt = os.path.join(base_dir, "cookies.txt")
-        youtube_cookies_txt = os.path.join(base_dir, "youtube_cookies.txt")
-        
-        # Используем тот, который существует (приоритет у cookies.txt)
-        if os.path.exists(cookies_txt):
-            self.cookies_path = cookies_txt
-        elif os.path.exists(youtube_cookies_txt):
-            self.cookies_path = youtube_cookies_txt
-        else:
-            # По умолчанию используем cookies.txt для создания
-            self.cookies_path = cookies_txt
+        # Путь к файлу кук (всегда используем абсолютный путь)
+        self.cookies_path = os.path.join(base_dir, "youtube_cookies.txt")
         
         os.makedirs(self.download_dir, exist_ok=True)
         
@@ -35,12 +25,21 @@ class DownloadService:
             try:
                 # Декодируем и сохраняем cookies из переменной окружения
                 # Мы ВСЕГДА перезаписываем файл если есть переменная окружения, чтобы гарантировать свежесть
+                print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
+                
+                # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
+                if len(cookies_content) > 10:
+                    print(f"📊 Decoded cookie content preview: {cookies_content[:30].replace('\n', ' ')}...")
+                    print(f"📏 Decoded size: {len(cookies_content)} bytes")
+                
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
-                print(f"🍪 YouTube cookies restored/updated from environment variable to: {self.cookies_path}")
+                print(f"✅ YouTube cookies restored/updated from environment variable to: {self.cookies_path}")
             except Exception as e:
-                print(f"⚠️ Failed to restore cookies from environment: {e}")
+                print(f"❌ Failed to restore cookies from environment: {e}")
+                import traceback
+                traceback.print_exc()
         
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
@@ -92,10 +91,18 @@ class DownloadService:
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web', 'ios', 'android'],
+                    'player_client': ['web_music', 'web', 'android', 'ios'],
                     'skip': ['translated_subs'],
                 }
             },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
+            'referer': 'https://www.google.com/',
+            'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
             'geo_bypass': True,
@@ -131,10 +138,12 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web', 'ios', 'android'],
+                    'player_client': ['web_music', 'web', 'android', 'ios'],
                     'skip': ['translated_subs'],
                 }
             },
+            'referer': 'https://www.google.com/',
+            'noproxy': True,
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
