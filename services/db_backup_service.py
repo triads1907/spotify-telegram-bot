@@ -45,12 +45,16 @@ class DatabaseBackupService:
             
             # Если локальный файл существует, проверим, нужно ли его заменять
             if os.path.exists(self.db_path):
-                file_size = os.path.getsize(self.db_path)
-                # Если файл подозрительно маленький (свежесозданный) - заменяем без вопросов
-                if file_size < 32768: # 32KB - это примерно пустая БД со схемой
-                    print(f"⚠️  Local database is too small ({file_size} bytes), overwriting with backup...")
+                local_size = os.path.getsize(self.db_path)
+                backup_size = backup_info.get('file_size', 0)
+                
+                # Если файл подозрительно маленький (свежесозданный) или бэкап в Telegram ЗНАЧИТЕЛЬНО больше
+                if local_size < 32768: # 32KB - это примерно пустая БД со схемой
+                    print(f"⚠️  Local database is too small ({local_size} bytes), overwriting with backup...")
+                elif backup_size > local_size + 1024: # Если бэкап больше хотя бы на 1KB
+                    print(f"🔄 Backup in Telegram ({backup_size} bytes) is larger than local DB ({local_size} bytes). Restoring...")
                 else:
-                    print(f"✅ Local database exists and looks healthy ({file_size} bytes). Skipping restoration.")
+                    print(f"✅ Local database exists ({local_size} bytes) and is equal or larger than backup ({backup_size} bytes). Skipping restoration.")
                     return False
             
             # Скачиваем backup
