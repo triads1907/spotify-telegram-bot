@@ -31,13 +31,14 @@ class DownloadService:
         # Проверяем переменную окружения для Railway деплоя
         import base64
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
-        if cookies_env and not os.path.exists(self.cookies_path):
+        if cookies_env:
             try:
                 # Декодируем и сохраняем cookies из переменной окружения
+                # Мы ВСЕГДА перезаписываем файл если есть переменная окружения, чтобы гарантировать свежесть
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
-                print(f"🍪 YouTube cookies restored from environment variable to: {self.cookies_path}")
+                print(f"🍪 YouTube cookies restored/updated from environment variable to: {self.cookies_path}")
             except Exception as e:
                 print(f"⚠️ Failed to restore cookies from environment: {e}")
         
@@ -91,7 +92,7 @@ class DownloadService:
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
+                    'player_client': ['ios', 'android', 'web'],
                     'skip': ['hls', 'dash', 'translated_subs'],
                 }
             },
@@ -130,7 +131,7 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
+                    'player_client': ['ios', 'android', 'web'],
                     'skip': ['hls', 'dash', 'translated_subs'],
                 }
             },
