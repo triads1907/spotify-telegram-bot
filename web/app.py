@@ -98,7 +98,7 @@ def sync_deep():
         asyncio.set_event_loop(loop)
         
         storage = get_telegram_storage()
-        sync_service = DeepSyncService(storage, db)
+        sync_service = DeepSyncService(storage, db, download_service)
         
         # Получаем параметры из запроса
         data = request.json or {}

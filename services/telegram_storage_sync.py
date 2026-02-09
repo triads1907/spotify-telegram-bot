@@ -15,9 +15,10 @@ from database.db_manager import DatabaseManager
 class DeepSyncService:
     """Сервис для глубокой синхронизации треков из Telegram Channel"""
     
-    def __init__(self, storage_service, db_manager):
+    def __init__(self, storage_service, db_manager, download_service=None):
         self.storage = storage_service
         self.db = db_manager
+        self.downloader = download_service
         self.base_url = storage_service.base_url
         self.channel_id = storage_service.channel_id
         
@@ -117,6 +118,14 @@ class DeepSyncService:
                         # Генерируем фейковый Track ID если его нет
                         track_id = audio.get('file_unique_id', f"sync_{msg_id}")
                         
+                        # Пытаемся найти обложку на YouTube если есть загрузчик
+                        image_url = None
+                        if self.downloader:
+                            metadata = await self.downloader.get_metadata_only(artist, title)
+                            if metadata:
+                                image_url = metadata.get('thumbnail')
+                                print(f"🖼️ Found thumbnail for {artist} - {title}: {image_url[:40]}...")
+                        
                         # Сохраняем в БД
                         print(f"✅ Found audio at {msg_id}: {artist} - {title}")
                         await self.db.save_telegram_file(
@@ -124,7 +133,8 @@ class DeepSyncService:
                             file_id=file_id,
                             file_size=audio.get('file_size'),
                             artist=artist,
-                            track_name=title
+                            track_name=title,
+                            image_url=image_url
                         )
                         found_count += 1
                         consecutive_errors = 0

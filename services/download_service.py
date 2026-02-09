@@ -117,6 +117,46 @@ class DownloadService:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
     
+    async def get_metadata_only(self, artist: str, track_name: str) -> Optional[Dict]:
+        """
+        Только поиск метаданных (без скачивания)
+        """
+        import yt_dlp
+        search_query = f"{artist} - {track_name}"
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'default_search': 'ytsearch1',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'skip': ['hls', 'dash', 'translated_subs'],
+                }
+            },
+            'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
+        }
+        
+        try:
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, self._extract_info_sync, search_query, ydl_opts)
+            if info and 'entries' in info and info['entries']:
+                entry = info['entries'][0]
+                return {
+                    'thumbnail': entry.get('thumbnail'),
+                    'title': entry.get('title'),
+                    'duration': entry.get('duration')
+                }
+            return None
+        except Exception as e:
+            print(f"❌ Metadata search error for {search_query}: {e}")
+            return None
+
+    def _extract_info_sync(self, query: str, opts: dict):
+        import yt_dlp
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(query, download=False)
+
     def _download_sync(self, query: str, ydl_opts: dict, file_format: str = 'mp3') -> Optional[Dict]:
         """Синхронное скачивание (для запуска в executor)"""
         try:
