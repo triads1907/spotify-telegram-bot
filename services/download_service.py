@@ -93,7 +93,7 @@ class DownloadService:
             'extractor_args': {
                 'youtube': {
                     'player_client': ['ios', 'android', 'web'],
-                    'skip': ['hls', 'dash', 'translated_subs'],
+                    'skip': ['translated_subs'],
                 }
             },
             'socket_timeout': 30,
@@ -132,7 +132,7 @@ class DownloadService:
             'extractor_args': {
                 'youtube': {
                     'player_client': ['ios', 'android', 'web'],
-                    'skip': ['hls', 'dash', 'translated_subs'],
+                    'skip': ['translated_subs'],
                 }
             },
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
