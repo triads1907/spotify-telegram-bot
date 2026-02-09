@@ -212,6 +212,7 @@ class TelegramFile(Base):
     # Метаданные трека для удобства
     artist: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     track_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Связи
     track: Mapped["Track"] = relationship(back_populates="telegram_files")

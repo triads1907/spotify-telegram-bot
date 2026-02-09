@@ -488,17 +488,31 @@ class DatabaseManager:
             
             return None
 
-    async def get_library_tracks(self, limit: int = 500) -> List[Track]:
+    async def get_library_tracks(self, limit: int = 1000) -> List[dict]:
         """Получить все треки, которые есть в Telegram Storage (библиотека канала)"""
         async with self.async_session() as session:
-            # Выбираем только те треки, которые успешно загружены в Telegram Channel
-            result = await session.execute(
-                select(Track)
-                .join(TelegramFile, Track.id == TelegramFile.track_id)
+            # Выбираем записи из TelegramFile и объединяем с данными Track
+            # Используем dict для гибкости, если данные в Track отсутствуют
+            query = (
+                select(TelegramFile, Track)
+                .join(Track, TelegramFile.track_id == Track.id, isouter=True)
                 .order_by(TelegramFile.uploaded_at.desc())
                 .limit(limit)
             )
-            return list(result.scalars().all())
+            result = await session.execute(query)
+            
+            tracks = []
+            for tg_file, track in result:
+                tracks.append({
+                    'id': tg_file.track_id,
+                    'name': tg_file.track_name or (track.name if track else "Unknown Track"),
+                    'artist': tg_file.artist or (track.artist if track else "Unknown Artist"),
+                    'album': track.album if track else None,
+                    'image': tg_file.image_url or (track.image_url if track else None),
+                    'spotify_url': track.spotify_url if track else f"https://open.spotify.com/track/{tg_file.track_id}",
+                    'uploaded_at': tg_file.uploaded_at
+                })
+            return tracks
 
     # ========== АУТЕНТИФИКАЦИЯ (WEB) ==========
 
@@ -557,7 +571,8 @@ class DatabaseManager:
     # ========== TELEGRAM STORAGE (Кеширование файлов) ==========
     
     async def save_telegram_file(self, track_id: str, file_id: str, file_path: str = None, 
-                                 file_size: int = None, artist: str = None, track_name: str = None) -> TelegramFile:
+                                 file_size: int = None, artist: str = None, track_name: str = None,
+                                 image_url: str = None) -> TelegramFile:
         """Сохранить file_id в кеш"""
         async with self.async_session() as session:
             # Проверяем, есть ли уже запись
@@ -576,6 +591,8 @@ class DatabaseManager:
                     existing.artist = artist
                 if track_name:
                     existing.track_name = track_name
+                if image_url:
+                    existing.image_url = image_url
                 await session.commit()
                 return existing
             else:
@@ -604,7 +621,8 @@ class DatabaseManager:
                     telegram_file_path=file_path,
                     file_size=file_size,
                     artist=artist,
-                    track_name=track_name
+                    track_name=track_name,
+                    image_url=image_url
                 )
                 session.add(telegram_file)
                 await session.commit()

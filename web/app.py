@@ -88,6 +88,33 @@ def index():
     """Главная страница"""
     return render_template('index.html')
 
+@app.route('/api/sync/deep', methods=['POST'])
+def sync_deep():
+    """Запустить глубокую синхронизацию (сканирование истории канала)"""
+    try:
+        from services.telegram_storage_sync import DeepSyncService
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        storage = get_telegram_storage()
+        sync_service = DeepSyncService(storage, db)
+        
+        # Получаем параметры из запроса
+        data = request.json or {}
+        range_size = data.get('range', 500)
+        
+        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=range_size))
+        loop.close()
+        
+        return jsonify({'success': True, 'found_count': count})
+        
+    except Exception as e:
+        print(f"❌ Deep Sync error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/search', methods=['POST'])
 def search():
     """Поиск треков"""
@@ -191,21 +218,10 @@ def get_library():
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        tracks_db = loop.run_until_complete(db.get_library_tracks(limit=500))
+        tracks_dict = loop.run_until_complete(db.get_library_tracks(limit=1000))
         loop.close()
         
-        tracks = []
-        for track in tracks_db:
-            tracks.append({
-                'id': track.id,
-                'name': track.name,
-                'artist': track.artist,
-                'album': track.album,
-                'image': track.image_url,
-                'spotify_url': track.spotify_url
-            })
-            
-        return jsonify({'tracks': tracks})
+        return jsonify({'tracks': tracks_dict})
         
     except Exception as e:
         print(f"❌ Error in get_library: {e}")
@@ -719,7 +735,8 @@ def prepare_stream():
                 file_path=upload_result.get('file_path'),
                 file_size=upload_result.get('file_size'),
                 artist=artist,
-                track_name=track_name
+                track_name=track_name,
+                image_url=result.get('thumbnail')
             )
         )
         

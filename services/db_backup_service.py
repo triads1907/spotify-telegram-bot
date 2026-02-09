@@ -247,26 +247,32 @@ class DatabaseBackupService:
             print(f"🧹 Cleaning up old database backups (keeping last {keep_count})...")
             
             # Собираем все IDs (из памяти и из БД для персистентности)
-            all_ids = list(set(self.backup_message_ids))
+            all_ids = []
             if self.db:
-                logs = await self.db.get_backup_logs(limit=20)
-                all_ids = list(set(all_ids + [log.message_id for log in logs]))
+                # Берем побольше записей для надежности
+                logs = await self.db.get_backup_logs(limit=50)
+                all_ids = [log.message_id for log in logs]
+                print(f"📊 Found {len(all_ids)} backup logs in database")
+            
+            # Добавляем IDs из текущей сессии
+            all_ids = list(set(all_ids + self.backup_message_ids))
             
             # Сортируем по возрастанию (от старых к новым)
             all_ids.sort()
             
             # Проверяем, есть ли бэкапы для удаления
             if len(all_ids) <= keep_count:
-                print(f"ℹ️  Only {len(all_ids)} backup(s) exist, nothing to clean up")
+                print(f"ℹ️ Only {len(all_ids)} backup(s) tracked, nothing to clean up (limit is {keep_count})")
                 return
             
             # Вычисляем, сколько бэкапов нужно удалить
             backups_to_delete = all_ids[:-keep_count]  # Все кроме последних keep_count
+            print(f"🗑️ Found {len(backups_to_delete)} old backups to delete")
             deleted_count = 0
             
             for message_id in backups_to_delete:
                 try:
-                    # Удаляем сообщение
+                    # Удаляем сообщение из Telegram
                     delete_response = httpx.post(
                         f"{self.storage.base_url}/deleteMessage",
                         data={
@@ -276,19 +282,21 @@ class DatabaseBackupService:
                         timeout=10.0
                     )
                     
-                    if delete_response.status_code == 200 and delete_response.json().get('ok'):
+                    is_ok = delete_response.status_code == 200 and delete_response.json().get('ok')
+                    
+                    if is_ok or delete_response.status_code == 400: # 400 обычно значит сообщение уже удалено
                         deleted_count += 1
-                        print(f"🗑️  Deleted old database backup: message {message_id}")
+                        print(f"🗑️ Deleted database backup: message {message_id}")
                         
                         # Удаляем из БД
                         if self.db:
                             await self.db.delete_backup_log(message_id)
                         
-                        # Удаляем из памяти если есть
+                        # Удаляем из памяти
                         if message_id in self.backup_message_ids:
                             self.backup_message_ids.remove(message_id)
                     else:
-                        print(f"⚠️  Could not delete message {message_id}: {delete_response.text}")
+                        print(f"⚠️ Could not delete message {message_id}: {delete_response.text}")
                         
                 except Exception as e:
                     print(f"⚠️  Error deleting message {message_id}: {e}")
