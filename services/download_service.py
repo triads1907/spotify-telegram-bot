@@ -31,8 +31,9 @@ class DownloadService:
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
         if cookies_env:
             try:
-                # Очищаем от пробелов и переносов (частая ошибка при копировании)
-                cookies_env = cookies_env.strip().replace('\n', '').replace('\r', '')
+                # Очищаем от любых символов, кроме валидных для Base64 (A-Z, a-z, 0-9, +, /, =)
+                import re
+                cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env)
                 
                 # Добавляем недостающий padding (Base64 требует кратность 4)
                 missing_padding = len(cookies_env) % 4
@@ -40,7 +41,11 @@ class DownloadService:
                     cookies_env += '=' * (4 - missing_padding)
                 
                 print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
-                cookies_content = base64.b64decode(cookies_env).decode('utf-8')
+                try:
+                    cookies_content = base64.b64decode(cookies_env).decode('utf-8')
+                except UnicodeDecodeError:
+                    print(f"⚠️ UTF-8 decoding failed, falling back to latin-1...")
+                    cookies_content = base64.b64decode(cookies_env).decode('latin-1')
                 
                 # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
                 is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
