@@ -19,45 +19,60 @@ from database.db_manager import DatabaseManager
 async def pre_startup_db_init():
     """
     Централизованная инициализация БД перед запуском всех сервисов.
+    Включает retry-логику для работы в нестабильных сетевых условиях при старте контейнера.
     """
     print("=" * 80, flush=True)
     print("🏗️  PRE-STARTUP DATABASE INITIALIZATION: Starting...", flush=True)
     print("=" * 80, flush=True)
     
-    try:
-        db = DatabaseManager()
-        
-        # 1. Восстановление из Telegram
-        print("📦 [INIT] Checking for database restoration from Telegram...", flush=True)
-        from services.telegram_storage_service import TelegramStorageService
-        from services.db_backup_service import DatabaseBackupService
-        
-        storage = TelegramStorageService()
-        db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
-        backup_service = DatabaseBackupService(storage_service=storage, db_path=db_path, db_manager=db)
-        
-        restored = await backup_service.restore_from_telegram()
-        if restored:
-            print("🔄 [INIT] Database restored! Refreshing engine...", flush=True)
-            await db.reconnect()
-        else:
-            print("ℹ️  [INIT] No backup found or restore skipped.", flush=True)
+    # 0. Даем сети 10 секунд чтобы "ожить" (актуально для контейнеров)
+    print("⏳ Waiting 10s for network interface to settle...", flush=True)
+    await asyncio.sleep(10)
+    
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"📦 [INIT] Attempt {attempt}/{max_retries} to initialize database...", flush=True)
+            db = DatabaseManager()
             
-        # 2. Инициализация схемы и WAL mode
-        print("📦 [INIT] Ensuring database schema and WAL mode...", flush=True)
-        await db.init_db()
-        
-        # Закрываем соединение, так как воркеры откроют свои
-        await db.close()
-        
-        print("✅ [INIT] Database is READY for services.", flush=True)
-        print("=" * 80, flush=True)
-        return True
-    except Exception as e:
-        print(f"❌ [INIT] Database initialization failed: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        return False
+            # 1. Восстановление из Telegram
+            print("📦 [INIT] Checking for database restoration from Telegram...", flush=True)
+            from services.telegram_storage_service import TelegramStorageService
+            from services.db_backup_service import DatabaseBackupService
+            
+            storage = TelegramStorageService()
+            db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+            backup_service = DatabaseBackupService(storage_service=storage, db_path=db_path, db_manager=db)
+            
+            restored = await backup_service.restore_from_telegram()
+            if restored:
+                print("🔄 [INIT] Database restored! Refreshing engine...", flush=True)
+                await db.reconnect()
+            else:
+                print("ℹ️  [INIT] No backup found or restore skipped.", flush=True)
+                
+            # 2. Инициализация схемы и WAL mode
+            print("📦 [INIT] Ensuring database schema and WAL mode...", flush=True)
+            await db.init_db()
+            
+            # Закрываем соединение, так как воркеры откроют свои
+            await db.close()
+            
+            print("✅ [INIT] Database is READY for services.", flush=True)
+            print("=" * 80, flush=True)
+            return True
+            
+        except Exception as e:
+            print(f"❌ [INIT] Attempt {attempt} failed: {e}", flush=True)
+            if attempt < max_retries:
+                print(f"⏳ Retrying in {retry_delay} seconds...", flush=True)
+                await asyncio.sleep(retry_delay)
+            else:
+                import traceback
+                traceback.print_exc()
+                return False
 
 def main():
     print("🚀 Starting Spotify Telegram Bot system...", flush=True)
