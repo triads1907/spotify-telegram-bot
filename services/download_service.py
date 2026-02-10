@@ -125,8 +125,8 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Принимаем любое лучшее аудио. 'ba' - сокращение от 'bestaudio'
-            'format': 'ba/best',
+            # Максимально гибкий селектор: пробуем лучшее аудио, потом любое лучшее, потом даже худшее
+            'format': 'bestaudio/best/worst',
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
