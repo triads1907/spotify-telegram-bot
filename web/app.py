@@ -75,6 +75,7 @@ def run_background_sync():
 def ensure_db_initialized():
     """Фоновая инициализация БД: только проверка на Deep Sync, если библиотека пуста"""
     global db_initialized
+    print(f"🕵️  [WEB] ensure_db_initialized called (initialized={db_initialized})", flush=True)
     with init_lock:
         if not db_initialized:
             try:
@@ -106,6 +107,9 @@ def ensure_db_initialized():
 @app.before_request
 def before_request():
     """Инициализация БД перед первым запросом, пропуск для health-check"""
+    if request.path != '/health':
+        print(f"📥 [WEB] Request: {request.method} {request.path}", flush=True)
+    
     if request.path == '/health':
         return
     ensure_db_initialized()
