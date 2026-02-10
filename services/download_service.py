@@ -31,21 +31,30 @@ class DownloadService:
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
         if cookies_env:
             try:
-                # Очищаем от любых символов, кроме валидных для Base64 (A-Z, a-z, 0-9, +, /, =)
+                # Убираем возможные заголовки/метки, если они были скопированы случайно
+                for marker in ["NEW_BASE64_START", "NEW_BASE64_END", "===", "---"]:
+                    cookies_env = cookies_env.replace(marker, "")
+                
+                # Очищаем от любых символов, кроме валидных для Base64
                 import re
-                cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env)
+                cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env).strip()
+                
+                # Убираем ведущие '=', они могут появиться при неправильном копировании
+                cookies_env = cookies_env.lstrip('=')
                 
                 # Добавляем недостающий padding (Base64 требует кратность 4)
                 missing_padding = len(cookies_env) % 4
                 if missing_padding:
                     cookies_env += '=' * (4 - missing_padding)
                 
-                print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
+                print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64 (Cleaned length: {len(cookies_env)})...")
                 try:
-                    cookies_content = base64.b64decode(cookies_env).decode('utf-8')
-                except UnicodeDecodeError:
-                    print(f"⚠️ UTF-8 decoding failed, falling back to latin-1...")
-                    cookies_content = base64.b64decode(cookies_env).decode('latin-1')
+                    cookies_bytes = base64.b64decode(cookies_env)
+                    try:
+                        cookies_content = cookies_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        print(f"⚠️ UTF-8 decoding failed, trying latin-1...")
+                        cookies_content = cookies_bytes.decode('latin-1')
                 
                 # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
                 is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
