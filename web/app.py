@@ -62,22 +62,21 @@ def ensure_db_initialized():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            # 1. Сначала просто инициализируем саму структуру БД (создаем таблицы если их нет)
-            print("📦 [STEP 1/4] Preliminary DB structure check...")
-            loop.run_until_complete(db.init_db())
-            print("✅ [STEP 1/4] Database tables initialized")
-            
-            # 2. Теперь проверяем, нужно ли восстановление из Telegram
-            print("📦 [STEP 2/4] Checking for database restoration from Telegram...")
+            # 1. Сначала проверяем, нужно ли восстановление из Telegram
+            print("📦 [STEP 1/4] Checking for database restoration from Telegram...")
             backup = get_backup_service()
             restored = loop.run_until_complete(backup.restore_from_telegram())
             
             if restored:
-                print("🔄 [STEP 2/4] Database restored! Re-initializing engine...")
+                print("🔄 [STEP 1/4] Database restored! Re-initializing engine...")
                 loop.run_until_complete(db.reconnect())
-                print("✅ [STEP 2/4] Engine reconnected to restored database")
+                print("✅ [STEP 1/4] Engine reconnected to restored database")
+                print("ℹ️  [STEP 1/4] Skipping table creation (restored DB already has tables)")
             else:
-                print("ℹ️  [STEP 2/4] No restoration needed or backup not found")
+                print("ℹ️  [STEP 1/4] No backup found, creating fresh database...")
+                # Только если НЕ восстановили из бэкапа, создаем таблицы
+                loop.run_until_complete(db.init_db())
+                print("✅ [STEP 1/4] Database tables created")
             
             # 3. ФАЛЛБЭК: Если после восстановления библиотека все еще пуста, запускаем Deep Sync
             print("📦 [STEP 3/4] Checking if library is empty...")
