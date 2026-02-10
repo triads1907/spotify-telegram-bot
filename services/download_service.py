@@ -80,8 +80,8 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Более гибкий выбор формата: сначала лучшее аудио, потом просто лучшее что есть
-            'format': 'ba/ba*/b/b*',
+            # Максимально гибкий выбор формата для совместимости
+            'format': 'bestaudio[ext=m4a]/bestaudio/best', # Prefer m4a for better quality, then any best audio
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{

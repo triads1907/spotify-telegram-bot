@@ -72,6 +72,17 @@ def ensure_db_initialized():
                 # Пересоздаем engine, чтобы он отцепился от старого файла и прицепился к новому
                 loop.run_until_complete(db.reconnect())
             
+            # 3. ФАЛЛБЭК: Если после восстановления библиотека все еще пуста, запускаем Deep Sync
+            is_empty = loop.run_until_complete(db.is_library_empty())
+            if is_empty:
+                print("🚀 Web App: Library is EMPTY. Triggering automatic Deep Sync from Telegram history...")
+                from services.telegram_storage_sync import DeepSyncService
+                sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
+                
+                # Запускаем в фоне, чтобы не блокировать веб-сервер
+                asyncio.create_task(sync_service.run_deep_sync(range_size=500))
+                print("🛰️ Web App: Automatic Deep Sync task started in background")
+            
             loop.close()
             db_initialized = True
             print("✅ Web App: Database is fully synchronized and ready")
