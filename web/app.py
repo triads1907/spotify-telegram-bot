@@ -79,63 +79,68 @@ def ensure_db_initialized():
     if not db_initialized:
         try:
             print("=" * 80)
-            print("🚀 STARTING DATABASE INITIALIZATION")
+            print("🚀 STARTING WEB APP DATABASE INITIALIZATION")
             print("=" * 80)
+            
+            # Проверяем, существует ли уже база и не пуста ли она
+            db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+            exists = os.path.exists(db_path)
+            size = os.path.getsize(db_path) if exists else 0
+            
+            print(f"📊 Local DB Status: exists={exists}, size={size} bytes")
             
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            # 1. Сначала проверяем, нужно ли восстановление из Telegram
-            print("📦 [STEP 1/4] Checking for database restoration from Telegram...")
-            backup = get_backup_service()
-            restored = loop.run_until_complete(backup.restore_from_telegram())
+            # Если база уже есть и она не крошечная (32KB - пустая база), 
+            # мы можем пропустить форсированное восстановление, так как бот уже мог это сделать
+            should_restore = not exists or size < 32768
             
-            if restored:
-                print("🔄 [STEP 1/4] Database restored! Re-initializing engine...")
-                loop.run_until_complete(db.reconnect())
-                print("✅ [STEP 1/4] Engine reconnected to restored database")
+            if should_restore:
+                print("📦 [STEP 1/4] Checking for database restoration from Telegram...")
+                backup = get_backup_service()
+                restored = loop.run_until_complete(backup.restore_from_telegram())
+                if restored:
+                    print("🔄 [STEP 1/4] Database restored! Re-initializing engine...")
+                    loop.run_until_complete(db.reconnect())
             else:
-                print("ℹ️  [STEP 1/4] No backup found")
+                print("ℹ️  [STEP 1/4] Local database exists and has data. Skipping restoration.")
             
-            # 2. Всегда запускаем init_db для создания недостающих таблиц (например, после обновления схемы)
-            print("📦 [STEP 2/4] Ensuring all tables exist (checkfirst=True)...")
+            # 2. Всегда запускаем init_db для WAL mode и проверки схемы
+            print("📦 [STEP 2/4] Ensuring database schema (WAL mode, etc.)...")
             loop.run_until_complete(db.init_db())
-            print("✅ [STEP 2/4] Database schema is up to date")
+            print("✅ [STEP 2/4] Database engine ready")
             
-            # 3. ФАЛЛБЭК: Если после восстановления библиотека все еще пуста, запускаем Deep Sync в ФОНЕ
-            print("📦 [STEP 3/4] Checking if library is empty...")
+            # 3. Проверка на пустоту для Deep Sync
+            print("📦 [STEP 3/4] Checking library tracks...")
             is_empty = loop.run_until_complete(db.is_library_empty())
-            print(f"📊 [STEP 3/4] Library empty status: {is_empty}")
-            
             if is_empty:
                 import threading
                 print("🚀 [STEP 3/4] Library is EMPTY. Triggering background Deep Sync...")
-                
-                # Запускаем в отдельном потоке, чтобы не блокировать текущий поток (Gunicorn worker)
                 thread = threading.Thread(target=run_background_sync)
                 thread.daemon = True
                 thread.start()
-                
-                print("🛰️  [STEP 3/4] Background Deep Sync task started. App will remain responsive.")
+                print("🛰️  [STEP 3/4] Background Deep Sync task started.")
             else:
-                print("✅ [STEP 3/4] Library has data, skipping initial Deep Sync")
+                # Получим количество для логов
+                print("✅ [STEP 3/4] Library has existing data.")
             
-            # Мы закрываем локальный loop, но фоновый поток будет иметь свой собственный
             loop.close()
             db_initialized = True
             print("=" * 80)
-            print("✅ DATABASE INITIALIZATION TRIGGERED")
+            print("✅ WEB APP DATABASE INITIALIZATION COMPLETE")
             print("=" * 80)
         except Exception as e:
             print(f"❌ Web App: Database init failed: {e}")
             import traceback
             traceback.print_exc()
-            # Пытаемся продолжить работу, пометив как инициализированную
             db_initialized = True
 
 @app.before_request
 def before_request():
-    """Инициализация БД перед первым запросом"""
+    """Инициализация БД перед первым запросом, пропуск для health-check"""
+    if request.path == '/health':
+        return
     ensure_db_initialized()
 
 @app.route('/health')
