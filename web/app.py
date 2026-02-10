@@ -259,6 +259,7 @@ def get_library():
         tracks_dict = loop.run_until_complete(db.get_library_tracks(limit=1000))
         loop.close()
         
+        print(f"🌐 [API] /api/library returning {len(tracks_dict)} tracks", flush=True)
         return jsonify({'tracks': tracks_dict})
         
     except Exception as e:

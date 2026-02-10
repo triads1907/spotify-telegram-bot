@@ -25,6 +25,10 @@ class DatabaseManager:
             connect_args=connect_args
         )
         
+        # Диагностика пути к БД
+        db_path = self.database_url.replace('sqlite+aiosqlite:///', '').replace('sqlite:///', '')
+        print(f"🔍 [DB] Using database at: {os.path.abspath(db_path)} (Size: {os.path.getsize(db_path) if os.path.exists(db_path) else 'NOT FOUND'})", flush=True)
+        
         # Включаем Foreign Keys на уровне драйвера SQLite для КАЖДОГО соединения
         if "sqlite" in self.database_url:
             @event.listens_for(Engine, "connect")
@@ -424,8 +428,11 @@ class DatabaseManager:
     async def is_library_empty(self) -> bool:
         """Проверить, пуста ли библиотека треков"""
         async with self.async_session() as session:
-            result = await session.execute(select(TelegramFile).limit(1))
-            return result.scalar_one_or_none() is None
+            from sqlalchemy import func
+            result = await session.execute(select(func.count()).select_from(TelegramFile))
+            count = result.scalar()
+            print(f"📊 [DB] Library track count (TelegramFile): {count}", flush=True)
+            return count == 0
 
     async def is_backup_logs_empty(self) -> bool:
         """Проверить, пуста ли таблица логов бэкапов"""
@@ -546,6 +553,7 @@ class DatabaseManager:
                     'spotify_url': track.spotify_url if track else f"https://open.spotify.com/track/{tg_file.track_id}",
                     'uploaded_at': tg_file.uploaded_at
                 })
+            print(f"📊 [DB] get_library_tracks found {len(tracks)} items", flush=True)
             return tracks
 
     # ========== АУТЕНТИФИКАЦИЯ (WEB) ==========
