@@ -18,7 +18,7 @@ def main():
         print("🔗 Starting Web Interface (Gunicorn)...")
         port = env.get('PORT', '5000')
         web_process = subprocess.Popen(
-            ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "2", "--timeout", "120", "web.app:app"],
+            ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--timeout", "120", "web.app:app"],
             env=env,
             stdout=sys.stdout,
             stderr=sys.stderr
