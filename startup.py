@@ -17,7 +17,9 @@ def main():
         # Enable unbuffered output for the web process
         web_env = env.copy()
         web_env['PYTHONUNBUFFERED'] = '1'
+        port = env.get('PORT', '5000')
         
+        print(f"🔗 Starting Web Interface (Gunicorn) on port {port}...")
         web_process = subprocess.Popen(
             ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--timeout", "120", "web.app:app"],
             env=web_env,
