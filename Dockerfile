@@ -3,6 +3,7 @@ FROM python:3.10-slim
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1
 
 # Устанавливаем системные зависимости для ffmpeg и Node.js (для yt-dlp)
 RUN apt-get update && apt-get install -y \
