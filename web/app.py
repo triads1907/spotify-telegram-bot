@@ -123,6 +123,10 @@ def before_request():
     """Инициализация БД перед первым запросом"""
     ensure_db_initialized()
 
+# Запускаем инициализацию сразу при загрузке модуля, не ждем первого запроса
+print("🌐 Flask app created, starting database initialization...")
+ensure_db_initialized()
+
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'ok'}), 200
