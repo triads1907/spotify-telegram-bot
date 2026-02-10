@@ -117,12 +117,15 @@ class DownloadService:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'default_search': 'ytsearch1',
+            # Используем default_search только если нет прямого URL от API
+            'default_search': 'ytsearch1' if not youtube_url else None,
             # Обход блокировки YouTube "Sign in to confirm you're not a bot"
             'extractor_args': {
                 'youtube': {
                     'player_client': ['ios', 'web_music', 'android', 'web'],
                     'skip': ['translated_subs'],
+                    # Автоматическое извлечение po_token и visitor_data (работает без кук!)
+                    'po_token': 'web',
                 }
             },
             'http_headers': {
