@@ -123,12 +123,11 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Базовый селектор: предпочитаем лучшее аудио
-            'format': 'bestaudio/best',
+            'format': 'bestaudio/best', # Первый этап: стандартное аудио
             'outtmpl': out_tmpl,
             'overwrites': True,
             'cachedir': False,
-            'source_address': '0.0.0.0', # Принудительно IPv4 для обхода ограничений на Railway
+            'source_address': '0.0.0.0', # Принудительно IPv4 для Railway
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': file_format,
@@ -140,51 +139,53 @@ class DownloadService:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            # Используем default_search только если нет прямого URL от API
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    # Плееры по умолчанию
-                    'player_client': ['mweb', 'web_music', 'web', 'ios', 'android'],
+                    'player_client': ['mweb', 'web_music', 'android', 'ios'],
                     'skip': ['translated_subs'],
                     'po_token': 'mweb',
                 }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             },
             'referer': 'https://www.google.com/',
             'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
+            'geo_bypass': True,
+            'nocheckcertificate': True,
+            'age_limit': 99,
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
-        # Используем URL от API если доступен, иначе поисковый запрос
         download_target = youtube_url if youtube_url else search_query
         loop = asyncio.get_event_loop()
         
         try:
-            # Попытка 1: Обычная
-            print(f"🚀 Download Attempt 1: {search_query}")
+            # Попытка 1: Стандартное лучшее аудио
+            print(f"🚀 Download Attempt 1 (ba/best): {search_query}")
             result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
-            # Если ошибка "format not available" или блокировка, пробуем Попытку 2
+            # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Attempt 1 failed (format/bot). Retrying with broader format and mobile clients...")
+                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (ba*/b* + Mobile only)...")
                     
-                    # Попытка 2: Формат 'best' (любой, не только аудио) + мобильные клиенты
-                    ydl_opts['format'] = 'best'
+                    # Попытка 2: Расширенный поиск аудио/видео + только мобильные
+                    ydl_opts['format'] = 'ba*/b*' 
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
                     
+                    # Маленькая задержка перед ретраем
+                    await asyncio.sleep(1)
                     result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                     
-                    # Если всё ещё ошибка, Попытка 3: TV/Embedded клиенты
+                    # Если всё ещё ошибка - Попытка 3: Универсальный захват
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. Final try with TV/Embedded clients...")
+                        print(f"⚠️ Attempt 2 failed. FINAL ATTEMPT 3 (* + TV/Embedded)...")
+                        ydl_opts['format'] = '*' # Берем ВООБЩЕ любой доступный поток
                         ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        
+                        await asyncio.sleep(1)
                         result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             return result
