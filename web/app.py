@@ -53,7 +53,12 @@ def run_background_sync():
     """Фоновая задача для глубокой синхронизации (Deep Sync)"""
     try:
         import threading
+        import time
         print(f"🛰️  [BACKGROUND-{threading.get_ident()}] Starting asynchronous Deep Sync task...")
+        
+        # Даем сети время стабилизироваться (критично для Railway)
+        print(f"⏳ [BACKGROUND] Waiting 15s for network to be fully ready...", flush=True)
+        time.sleep(15)
         
         # Создаем новый event loop для этого потока
         loop = asyncio.new_event_loop()

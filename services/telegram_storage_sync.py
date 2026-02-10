@@ -28,15 +28,23 @@ class DeepSyncService:
         """
         print(f"🕵️  [SYNC] Starting Deep Sync for last {range_size} messages...", flush=True)
         
-        # 1. Получаем ID бота заранее
-        try:
-            bot_info = httpx.get(f"{self.base_url}/getMe", timeout=10.0).json()
-            bot_id = bot_info.get('result', {}).get('id')
-            if not bot_id:
-                print("❌ [SYNC] Could not get bot ID from getMe", flush=True)
-                return 0
-        except Exception as e:
-            print(f"❌ [SYNC] Failed to get bot info: {e}", flush=True)
+        # 1. Получаем ID бота заранее (с retry для надежности)
+        bot_id = None
+        for attempt in range(1, 4):
+            try:
+                print(f"🔍 [SYNC] Getting bot info (attempt {attempt}/3)...", flush=True)
+                bot_info = httpx.get(f"{self.base_url}/getMe", timeout=10.0).json()
+                bot_id = bot_info.get('result', {}).get('id')
+                if bot_id:
+                    print(f"✅ [SYNC] Bot ID retrieved: {bot_id}", flush=True)
+                    break
+            except Exception as e:
+                print(f"⚠️  [SYNC] Attempt {attempt} failed: {e}", flush=True)
+                if attempt < 3:
+                    await asyncio.sleep(5)
+        
+        if not bot_id:
+            print("❌ [SYNC] Could not get bot ID after 3 attempts", flush=True)
             return 0
 
         # 2. Определяем начальный ID
