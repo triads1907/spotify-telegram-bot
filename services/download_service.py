@@ -31,13 +31,14 @@ class DownloadService:
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
         if cookies_env:
             try:
-                # Убираем возможные заголовки/метки, если они были скопированы случайно
-                for marker in ["NEW_BASE64_START", "NEW_BASE64_END", "===", "---"]:
-                    cookies_env = cookies_env.replace(marker, "")
-                
-                # Очищаем от любых символов, кроме валидных для Base64
+                # Убираем всё, что не похоже на Base64
                 import re
                 cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env).strip()
+                
+                # Ищем начало Netscape файла (Base64 для '# ' это 'IyB')
+                # Это поможет, если в начало попал мусор вроде 'NEW_BASE64_START'
+                if 'IyB' in cookies_env:
+                    cookies_env = cookies_env[cookies_env.find('IyB'):]
                 
                 # Убираем ведущие '=', они могут появиться при неправильном копировании
                 cookies_env = cookies_env.lstrip('=')
