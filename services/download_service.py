@@ -123,10 +123,12 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Максимально гибкий селектор: пробуем лучшее аудио, потом любое лучшее, потом даже худшее
-            'format': 'bestaudio/best/worst',
+            # Базовый селектор: предпочитаем лучшее аудио
+            'format': 'bestaudio/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
+            'cachedir': False,
+            'source_address': '0.0.0.0', # Принудительно IPv4 для обхода ограничений на Railway
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': file_format,
@@ -142,77 +144,48 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    # Используем mweb в приоритете и web_music как наиболее стабильный для аудио
+                    # Плееры по умолчанию
                     'player_client': ['mweb', 'web_music', 'web', 'ios', 'android'],
                     'skip': ['translated_subs'],
-                    # Используем mweb для автоматического извлечения PO-токена
                     'po_token': 'mweb',
                 }
             },
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
             },
             'referer': 'https://www.google.com/',
             'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
-            'geo_bypass': True,
-            'nocheckcertificate': True,
-            'age_limit': 99,  # Обход возрастных ограничений
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
         # Используем URL от API если доступен, иначе поисковый запрос
         download_target = youtube_url if youtube_url else search_query
-        
-        has_cookies = os.path.exists(self.cookies_path)
-        api_mode = " (via API)" if youtube_url else ""
-        print(f"🚀 Starting download attempt 1{api_mode} (Cookies: {'YES' if has_cookies else 'NO'})")
+        loop = asyncio.get_event_loop()
         
         try:
-            # Attempt 1: Standard comprehensive list
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, 
-                self._download_sync, 
-                download_target,  # Используем URL от API или поисковый запрос
-                ydl_opts,
-                file_format
-            )
+            # Попытка 1: Обычная
+            print(f"🚀 Download Attempt 1: {search_query}")
+            result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
-            # Check for bot detection
+            # Если ошибка "format not available" или блокировка, пробуем Попытку 2
             if result and isinstance(result, dict) and 'error' in result:
-                err = result['error']
-                if "confirm you're not a bot" in err or "Sign in" in err or "403" in err:
-                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with Attempt 2 (Mobile only)...")
-                    # Attempt 2: Purely mobile (harder to detect)
+                err_msg = result['error']
+                if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
+                    print(f"⚠️ Attempt 1 failed (format/bot). Retrying with broader format and mobile clients...")
+                    
+                    # Попытка 2: Формат 'best' (любой, не только аудио) + мобильные клиенты
+                    ydl_opts['format'] = 'best'
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
                     
-                    result = await loop.run_in_executor(
-                        None, 
-                        self._download_sync, 
-                        download_target,  # Используем тот же target
-                        ydl_opts,
-                        file_format
-                    )
+                    result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                     
-                    # Attempt 3: TV and Embedded (sometimes less restricted)
+                    # Если всё ещё ошибка, Попытка 3: TV/Embedded клиенты
                     if result and isinstance(result, dict) and 'error' in result:
-                        err = result['error']
-                        if "confirm you're not a bot" in err or "Sign in" in err:
-                            print(f"⚠️ Bot detection triggered on Attempt 2. Retrying with Attempt 3 (TV/Embedded)...")
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
-                            
-                            result = await loop.run_in_executor(
-                                None, 
-                                self._download_sync, 
-                                download_target,  # Используем тот же target
-                                ydl_opts,
-                                file_format
-                            )
+                        print(f"⚠️ Attempt 2 failed. Final try with TV/Embedded clients...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             return result
         except Exception as e:
