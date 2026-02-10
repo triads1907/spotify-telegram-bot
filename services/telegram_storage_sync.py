@@ -26,17 +26,27 @@ class DeepSyncService:
         """
         Просканировать последние N сообщений в канале и добавить найденные аудио в БД
         """
-        print(f"🕵️ Starting Deep Sync for last {range_size} messages...")
+        print(f"🕵️  [SYNC] Starting Deep Sync for last {range_size} messages...", flush=True)
         
-        # 1. Определяем начальный ID
+        # 1. Получаем ID бота заранее
+        try:
+            bot_info = httpx.get(f"{self.base_url}/getMe", timeout=10.0).json()
+            bot_id = bot_info.get('result', {}).get('id')
+            if not bot_id:
+                print("❌ [SYNC] Could not get bot ID from getMe", flush=True)
+                return 0
+        except Exception as e:
+            print(f"❌ [SYNC] Failed to get bot info: {e}", flush=True)
+            return 0
+
+        # 2. Определяем начальный ID
         if not start_id:
-            # Пытаемся получить последний ID через pinned message или отправив тестовое сообщение
             pinned = self.storage.get_pinned_message()
             if pinned:
-                start_id = pinned.get('message_id', 0)
-                print(f"📌 Starting from pinned message ID: {start_id}")
+                # Берем с запасом вперед +20
+                start_id = pinned.get('message_id', 0) + 20
+                print(f"📌 [SYNC] Starting from pinned message ID (+buffer): {start_id}", flush=True)
             else:
-                # Отправляем и удаляем сообщение чтобы узнать текущий ID
                 try:
                     resp = httpx.post(f"{self.base_url}/sendMessage", data={
                         'chat_id': self.channel_id,
@@ -45,57 +55,35 @@ class DeepSyncService:
                     if resp.status_code == 200:
                         msg = resp.json().get('result', {})
                         start_id = msg.get('message_id', 0)
-                        # Удаляем пробное сообщение
                         httpx.post(f"{self.base_url}/deleteMessage", data={
                             'chat_id': self.channel_id,
                             'message_id': start_id
                         })
-                        print(f"🛰️ Current channel head ID: {start_id}")
+                        print(f"🛰️  [SYNC] Current channel head ID: {start_id}", flush=True)
                 except:
                     start_id = 5000 # Fallback
         
         if not start_id:
-            print("❌ Could not determine start ID for Deep Sync")
+            print("❌ [SYNC] Could not determine start ID", flush=True)
             return 0
 
         found_count = 0
         consecutive_errors = 0
         
         # Итерируемся назад
+        print(f"🔎 [SYNC] Scanning IDs from {start_id} down to {max(0, start_id - range_size)}...", flush=True)
+        
         for msg_id in range(start_id, max(0, start_id - range_size), -1):
-            # Чтобы не спамить Telegram API, делаем небольшую паузу если нужно
-            if msg_id % 20 == 0:
+            if msg_id % 50 == 0:
                 await asyncio.sleep(0.5)
             
             try:
-                # В Bot API нет getMessage, поэтому используем forwardMessage к самому боту
-                # Это позволит получить объект Message с Audio без изменения канала
-                # Мы используем chat_id бота (который совпадает с его токеном в начале?) 
-                # Нет, нам нужен ID бота. Но мы можем форварднуть в тот же канал! 
-                # Но это создаст дубликат.
-                # Лучший способ - copyMessage в тот же канал с disable_notification=True и тут же удалить?
-                # Или forwardMessage в приватный чат администратора (но мы не знаем его ID).
-                
-                # Попробуем getChat с конкретным message_id? Нет такого.
-                
-                # Используем трюк: forwardMessage в тот же канал, получаем результат, и ТУТ ЖЕ УДАЛЯЕМ.
-                # Это на доли секунды появится в канале, но позволит извлечь данные.
-                # UPD: Еще лучше - forwardMessage в какой-нибудь "мусорный" чат или просто Chat ID бота.
-                # Если бот отправляет сообщение СЕБЕ, он знает свой ID из getMe.
-                
-                bot_info = httpx.get(f"{self.base_url}/getMe").json()
-                bot_id = bot_info.get('result', {}).get('id')
-                
-                if not bot_id:
-                    print("❌ Could not get bot ID")
-                    break
-
                 resp = httpx.post(f"{self.base_url}/forwardMessage", data={
                     'chat_id': bot_id,
                     'from_chat_id': self.channel_id,
                     'message_id': msg_id,
                     'disable_notification': True
-                })
+                }, timeout=10.0)
                 
                 if resp.status_code == 200:
                     msg_data = resp.json().get('result', {})
@@ -103,31 +91,24 @@ class DeepSyncService:
                     if audio:
                         file_id = audio.get('file_id')
                         caption = msg_data.get('caption', '')
-                        
-                        # Извлекаем артиста и название из капшена или аудио-метаданных
                         title = audio.get('title', 'Unknown')
                         artist = audio.get('performer', 'Unknown')
                         
-                        # Если есть капшен вида "🎵 Artist - Title", используем его
                         if caption and " - " in caption:
                             clean_caption = caption.replace("🎵", "").strip()
-                            parts = clean_caption.split(" - ", 1)
-                            artist = parts[0].strip()
-                            title = parts[1].strip()
+                            if " - " in clean_caption:
+                                parts = clean_caption.split(" - ", 1)
+                                artist = parts[0].strip()
+                                title = parts[1].strip()
                         
-                        # Генерируем фейковый Track ID если его нет
                         track_id = audio.get('file_unique_id', f"sync_{msg_id}")
                         
-                        # Пытаемся найти обложку на YouTube если есть загрузчик
                         image_url = None
                         if self.downloader:
                             metadata = await self.downloader.get_metadata_only(artist, title)
                             if metadata:
                                 image_url = metadata.get('thumbnail')
-                                print(f"🖼️ Found thumbnail for {artist} - {title}: {image_url[:40]}...")
                         
-                        # Сохраняем в БД
-                        print(f"✅ Found audio at {msg_id}: {artist} - {title}")
                         await self.db.save_telegram_file(
                             track_id=track_id,
                             file_id=file_id,
@@ -138,19 +119,20 @@ class DeepSyncService:
                         )
                         found_count += 1
                         consecutive_errors = 0
+                        print(f"✅ [SYNC] Recovered: {artist} - {title}", flush=True)
                     else:
-                        consecutive_errors = 0
+                        consecutive_errors += 1
                 else:
                     consecutive_errors += 1
                     
-                # Если слишком много ошибок подряд (сообщения не существуют), возможно мы дошли до начала
-                if consecutive_errors > 50:
-                    print(f"ℹ️ Reached end of history or too many missing messages at ID {msg_id}")
+                if consecutive_errors > 200:
+                    print(f"ℹ️  [SYNC] Reached sparse history at ID {msg_id}. Stopping.", flush=True)
                     break
                     
             except Exception as e:
-                print(f"⚠️ Error syncing message {msg_id}: {e}")
                 consecutive_errors += 1
+                if msg_id % 100 == 0:
+                    print(f"⚠️  [SYNC] Error ID {msg_id}: {e}", flush=True)
                 
-        print(f"🎉 Deep Sync complete! Found {found_count} tracks.")
+        print(f"🎉 [SYNC] Deep Sync complete! Found {found_count} tracks.", flush=True)
         return found_count

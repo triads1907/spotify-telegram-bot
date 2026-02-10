@@ -60,10 +60,8 @@ def run_background_sync():
         asyncio.set_event_loop(loop)
         
         from services.telegram_storage_sync import DeepSyncService
-        sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
-        
         # Запускаем синхронизацию
-        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=500))
+        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=1000))
         print(f"✅ [BACKGROUND-{threading.get_ident()}] Deep Sync completed! Found {count} tracks")
         
         loop.close()
