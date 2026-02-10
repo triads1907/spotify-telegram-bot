@@ -77,67 +77,34 @@ def run_background_sync():
         traceback.print_exc()
 
 def ensure_db_initialized():
-    """Ленивая инициализация БД с защитой от одновременных вызовов"""
+    """Фоновая инициализация БД: только проверка на Deep Sync, если библиотека пуста"""
     global db_initialized
     with init_lock:
         if not db_initialized:
             try:
-                print("=" * 80)
-                print("🚀 STARTING WEB APP DATABASE INITIALIZATION")
-                print("=" * 80)
-                
-                # Проверяем, существует ли уже база и не пуста ли она
-                db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
-                exists = os.path.exists(db_path)
-                size = os.path.getsize(db_path) if exists else 0
-                
-                print(f"📊 Local DB Status: exists={exists}, size={size} bytes")
+                print("🌐 [WEB] Worker initializing database connection...")
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-                # Если база уже есть и она не крошечная (32KB - пустая база), 
-                # мы можем пропустить форсированное восстановление, так как бот уже мог это сделать
-                should_restore = not exists or size < 32768
-                
-                if should_restore:
-                    print("📦 [STEP 1/4] Checking for database restoration from Telegram...")
-                    backup = get_backup_service()
-                    restored = loop.run_until_complete(backup.restore_from_telegram())
-                    if restored:
-                        print("🔄 [STEP 1/4] Database restored! Re-initializing engine...")
-                        loop.run_until_complete(db.reconnect())
-                else:
-                    print("ℹ️  [STEP 1/4] Local database exists and has data. Skipping restoration.")
-                
-                # 2. Всегда запускаем init_db для WAL mode и проверки схемы
-                print("📦 [STEP 2/4] Ensuring database schema (WAL mode, etc.)...")
+                # 1. Применяем настройки WAL mode/схемы для этого процесса
                 loop.run_until_complete(db.init_db())
-                print("✅ [STEP 2/4] Database engine ready")
                 
-                # 3. Проверка на пустоту для Deep Sync
-                print("📦 [STEP 3/4] Checking library tracks...")
+                # 2. Проверка на пустоту для Deep Sync (только если база пуста)
                 is_empty = loop.run_until_complete(db.is_library_empty())
                 if is_empty:
                     import threading
-                    print("🚀 [STEP 3/4] Library is EMPTY. Triggering background Deep Sync...")
+                    print("🚀 [WEB] Library is EMPTY. Triggering background Deep Sync...")
                     thread = threading.Thread(target=run_background_sync)
                     thread.daemon = True
                     thread.start()
-                    print("🛰️  [STEP 3/4] Background Deep Sync task started.")
                 else:
-                    # Получим количество для логов
-                    print("✅ [STEP 3/4] Library has existing data.")
+                    print("✅ [WEB] Library is ready.")
                 
                 loop.close()
                 db_initialized = True
-                print("=" * 80)
-                print("✅ WEB APP DATABASE INITIALIZATION COMPLETE")
-                print("=" * 80)
             except Exception as e:
-                print(f"❌ Web App: Database init failed: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"❌ [WEB] Database connection init failed: {e}")
                 db_initialized = True
 
 @app.before_request
@@ -146,16 +113,6 @@ def before_request():
     if request.path == '/health':
         return
     ensure_db_initialized()
-
-# Запускаем инициализацию сразу при загрузке модуля в фоновом потоке,
-# чтобы не блокировать запуск Gunicorn worker и не мешать health-checks.
-def trigger_proactive_init():
-    init_thread = threading.Thread(target=ensure_db_initialized)
-    init_thread.daemon = True
-    init_thread.start()
-    print("🛰️  Proactive Database Initialization thread started.")
-
-trigger_proactive_init()
 
 @app.route('/health')
 def health_check():

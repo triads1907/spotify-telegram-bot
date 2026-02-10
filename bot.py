@@ -60,30 +60,21 @@ from handlers.settings import (
 from handlers.menu import handle_menu_buttons
 
 async def post_init(application: Application) -> None:
-    """Функция для инициализации после запуска бота (восстановление БД и backup)."""
+    """Инициализация после запуска (после pre-startup в startup.py)."""
     try:
-        print("📦 Phase 1: Database Restoration...")
-        storage_service = TelegramStorageService()
-        db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
-        
-        backup_service = DatabaseBackupService(
-            storage_service=storage_service,
-            db_path=db_path
-        )
-        
-        # 1. Сначала пробуем восстановить БД из Telegram
-        # Это должно произойти ДО того, как db.init_db() создаст пустые таблицы
-        restored = await backup_service.restore_from_telegram()
-        
-        if restored:
-            print("✅ Database restored from Telegram backup")
-        else:
-            print("ℹ️ No backup found or restore skipped, will use/create local database")
-        
-        # 2. Теперь инициализируем БД (создаем таблицы, если их нет)
+        # БД уже восстановлена и инициализирована в startup.py
         db = DatabaseManager()
         await db.init_db()
         application.bot_data['db'] = db
+        
+        # Настройка сервиса бэкапов для периодической работы
+        storage_service = TelegramStorageService()
+        db_path = config.DATABASE_URL.replace('sqlite+aiosqlite:///', '')
+        backup_service = DatabaseBackupService(
+            storage_service=storage_service,
+            db_path=db_path,
+            db_manager=db
+        )
         
         # Подключаем менеджер БД к сервису бэкапов для персистентной очистки
         backup_service.db = db
