@@ -1,6 +1,5 @@
-"""
-Flask Web Application для музыкального бота
-"""
+print("🌐 [BOOT] web/app.py: Module loading started...")
+
 from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
 import asyncio
@@ -10,6 +9,8 @@ import sys
 
 # Добавляем корневую директорию в путь для импорта модулей
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+print("🌐 [BOOT] web/app.py: Imports successful, configuring services...")
 
 import config
 from services.spotify_service import SpotifyService

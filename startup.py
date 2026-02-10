@@ -14,12 +14,13 @@ def main():
     processes = []
 
     try:
-        # 1. Start Web App with Gunicorn (production WSGI server)
-        print("🔗 Starting Web Interface (Gunicorn)...")
-        port = env.get('PORT', '5000')
+        # Enable unbuffered output for the web process
+        web_env = env.copy()
+        web_env['PYTHONUNBUFFERED'] = '1'
+        
         web_process = subprocess.Popen(
             ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--timeout", "120", "web.app:app"],
-            env=env,
+            env=web_env,
             stdout=sys.stdout,
             stderr=sys.stderr
         )
