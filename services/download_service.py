@@ -34,6 +34,11 @@ class DownloadService:
                 # Очищаем от пробелов и переносов (частая ошибка при копировании)
                 cookies_env = cookies_env.strip().replace('\n', '').replace('\r', '')
                 
+                # Добавляем недостающий padding (Base64 требует кратность 4)
+                missing_padding = len(cookies_env) % 4
+                if missing_padding:
+                    cookies_env += '=' * (4 - missing_padding)
+                
                 print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
