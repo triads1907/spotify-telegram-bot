@@ -121,11 +121,11 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    # Если используем po_token: web, то и web клиент должен быть в начале
-                    'player_client': ['web', 'web_music', 'ios', 'android'],
+                    # Используем mweb в приоритете и web_music как наиболее стабильный для аудио
+                    'player_client': ['mweb', 'web_music', 'web', 'ios', 'android'],
                     'skip': ['translated_subs'],
-                    # Автоматическое извлечение po_token и visitor_data
-                    'po_token': 'web',
+                    # Используем mweb для автоматического извлечения PO-токена
+                    'po_token': 'mweb',
                 }
             },
             'http_headers': {
