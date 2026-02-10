@@ -79,9 +79,9 @@ def ensure_db_initialized():
                 from services.telegram_storage_sync import DeepSyncService
                 sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
                 
-                # Запускаем в фоне, чтобы не блокировать веб-сервер
-                asyncio.create_task(sync_service.run_deep_sync(range_size=500))
-                print("🛰️ Web App: Automatic Deep Sync task started in background")
+                # Запускаем синхронно, чтобы гарантировать выполнение
+                count = loop.run_until_complete(sync_service.run_deep_sync(range_size=500))
+                print(f"✅ Web App: Automatic Deep Sync completed! Found {count} tracks")
             
             loop.close()
             db_initialized = True
