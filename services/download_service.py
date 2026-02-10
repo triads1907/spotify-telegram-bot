@@ -122,6 +122,7 @@ class DownloadService:
         has_cookies = os.path.exists(self.cookies_path)
         print(f"🚀 Starting download attempt 1 (Cookies: {'YES' if has_cookies else 'NO'})")
         
+        try:
             # Attempt 1: Standard comprehensive list
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
