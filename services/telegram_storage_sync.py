@@ -41,27 +41,27 @@ class DeepSyncService:
 
         # 2. Определяем начальный ID
         if not start_id:
-            pinned = self.storage.get_pinned_message()
-            if pinned:
-                # Берем с запасом вперед +20
-                start_id = pinned.get('message_id', 0) + 20
-                print(f"📌 [SYNC] Starting from pinned message ID (+buffer): {start_id}", flush=True)
-            else:
-                try:
-                    resp = httpx.post(f"{self.base_url}/sendMessage", data={
+            # Всегда используем probe message, так как pinned message это бэкап БД, а не музыка
+            try:
+                print(f"🛰️  [SYNC] Probing channel to find latest message ID...", flush=True)
+                resp = httpx.post(f"{self.base_url}/sendMessage", data={
+                    'chat_id': self.channel_id,
+                    'text': '🔍 Deep Sync Probe'
+                })
+                if resp.status_code == 200:
+                    msg = resp.json().get('result', {})
+                    start_id = msg.get('message_id', 0)
+                    # Удаляем пробное сообщение
+                    httpx.post(f"{self.base_url}/deleteMessage", data={
                         'chat_id': self.channel_id,
-                        'text': '🔍 Deep Sync Probe'
+                        'message_id': start_id
                     })
-                    if resp.status_code == 200:
-                        msg = resp.json().get('result', {})
-                        start_id = msg.get('message_id', 0)
-                        httpx.post(f"{self.base_url}/deleteMessage", data={
-                            'chat_id': self.channel_id,
-                            'message_id': start_id
-                        })
-                        print(f"🛰️  [SYNC] Current channel head ID: {start_id}", flush=True)
-                except:
-                    start_id = 5000 # Fallback
+                    print(f"🛰️  [SYNC] Current channel head ID: {start_id}", flush=True)
+                else:
+                    start_id = 5000  # Fallback
+            except Exception as e:
+                print(f"⚠️  [SYNC] Probe failed: {e}. Using fallback.", flush=True)
+                start_id = 5000
         
         if not start_id:
             print("❌ [SYNC] Could not determine start ID", flush=True)
