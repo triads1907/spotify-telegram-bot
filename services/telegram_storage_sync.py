@@ -78,8 +78,10 @@ class DeepSyncService:
                 await asyncio.sleep(0.5)
             
             try:
+                # Используем Self-Forward: форвардим в тот же канал для получения метаданных
+                # Это обходит ограничение "bots can't send messages to bots"
                 resp = httpx.post(f"{self.base_url}/forwardMessage", data={
-                    'chat_id': bot_id,
+                    'chat_id': self.channel_id,
                     'from_chat_id': self.channel_id,
                     'message_id': msg_id,
                     'disable_notification': True
@@ -87,6 +89,8 @@ class DeepSyncService:
                 
                 if resp.status_code == 200:
                     msg_data = resp.json().get('result', {})
+                    new_msg_id = msg_data.get('message_id')
+                    
                     audio = msg_data.get('audio')
                     if audio:
                         file_id = audio.get('file_id')
@@ -121,16 +125,19 @@ class DeepSyncService:
                         consecutive_errors = 0
                         print(f"✅ [SYNC] Recovered: {artist} - {title}", flush=True)
                     else:
-                        # Сообщение существует, но это не аудио (например, бэкап БД)
-                        # Мы обнуляем или просто не инкрементируем счетчик ошибок "конца истории"
+                        consecutive_errors = 0
                         if msg_id % 100 == 0:
-                            print(f"ℹ️  [SYNC] ID {msg_id} exists but is not audio. Continuing...", flush=True)
-                        consecutive_errors = 0 
+                            print(f"ℹ️  [SYNC] ID {msg_id} is not audio. Continuing...", flush=True)
+
+                    # Сразу удаляем временный дубликат
+                    if new_msg_id:
+                        httpx.post(f"{self.base_url}/deleteMessage", data={
+                            'chat_id': self.channel_id,
+                            'message_id': new_msg_id
+                        })
                 elif resp.status_code == 400:
-                    # Сообщение не найдено - вот это настоящий пропуск в истории
                     consecutive_errors += 1
                 else:
-                    # Другие ошибки (Rate limit и т.д.)
                     consecutive_errors += 1
                     
                 if consecutive_errors > 200:
