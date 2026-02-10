@@ -688,7 +688,8 @@ async function addTrackToPlaylist(playlistId) {
 function openDownloadModal(button) {
     const card = button.closest('.track-card');
     const index = parseInt(card.dataset.index);
-    currentTrack = resultsData[index];
+    const type = card.dataset.type;
+    currentTrack = type === 'library' ? libraryData[index] : resultsData[index];
     document.getElementById('downloadModal').classList.add('active');
 }
 

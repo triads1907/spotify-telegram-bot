@@ -974,7 +974,14 @@ textarea.text-input {
     gap: 12px;
     cursor: pointer;
     transition: all var(--transition-fast);
-    margin-top: 12px;
+    margin-top: 24px;
+}
+
+.download-btn svg,
+.create-btn svg {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
 }
 
 .download-btn:hover,
