@@ -199,8 +199,23 @@ class DownloadService:
         """
         Только поиск метаданных (без скачивания)
         """
-        import yt_dlp
         search_query = f"{artist} - {track_name}"
+        
+        # Приоритет: YouTube API (быстрее и надежнее)
+        if self.youtube_api and self.youtube_api.api_key:
+            try:
+                video_info = self.youtube_api.search_video(search_query)
+                if video_info:
+                    return {
+                        'thumbnail': video_info.get('thumbnail'),
+                        'title': video_info.get('title'),
+                        'duration': None  # API не возвращает duration в search
+                    }
+            except Exception as e:
+                print(f"⚠️ YouTube API metadata search failed: {e}")
+        
+        # Fallback: yt-dlp (если API недоступен или не сработал)
+        import yt_dlp
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
