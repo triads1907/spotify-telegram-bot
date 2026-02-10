@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from .models import Base, User, Playlist, Track, PlaylistTrack, Album, DownloadHistory, Favorite, TrackCache, AuthToken, TelegramFile, BackupLog
 import config
+import os
 
 
 class DatabaseManager:
