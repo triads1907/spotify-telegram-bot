@@ -55,6 +55,9 @@ class DownloadService:
                     except UnicodeDecodeError:
                         print(f"⚠️ UTF-8 decoding failed, trying latin-1...")
                         cookies_content = cookies_bytes.decode('latin-1')
+                except Exception as b64e:
+                    print(f"❌ Base64 decoding failed: {b64e}")
+                    raise b64e
                 
                 # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
                 is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
