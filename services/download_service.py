@@ -122,7 +122,7 @@ class DownloadService:
         has_cookies = os.path.exists(self.cookies_path)
         print(f"🚀 Starting download attempt 1 (Cookies: {'YES' if has_cookies else 'NO'})")
         
-        try:
+            # Attempt 1: Standard comprehensive list
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None, 
@@ -132,11 +132,11 @@ class DownloadService:
                 file_format
             )
             
-            # Проверяем на ошибку бота
+            # Check for bot detection
             if result and isinstance(result, dict) and 'error' in result:
                 err = result['error']
-                if "confirm you're not a bot" in err or "Sign in" in err:
-                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with mobile clients...")
+                if "confirm you're not a bot" in err or "Sign in" in err or "403" in err:
+                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with Attempt 2 (Mobile only)...")
                     # Attempt 2: Purely mobile (harder to detect)
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
                     
@@ -147,6 +147,21 @@ class DownloadService:
                         ydl_opts,
                         file_format
                     )
+                    
+                    # Attempt 3: TV and Embedded (sometimes less restricted)
+                    if result and isinstance(result, dict) and 'error' in result:
+                        err = result['error']
+                        if "confirm you're not a bot" in err or "Sign in" in err:
+                            print(f"⚠️ Bot detection triggered on Attempt 2. Retrying with Attempt 3 (TV/Embedded)...")
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                            
+                            result = await loop.run_in_executor(
+                                None, 
+                                self._download_sync, 
+                                search_query, 
+                                ydl_opts,
+                                file_format
+                            )
             
             return result
         except Exception as e:
