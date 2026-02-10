@@ -18,6 +18,14 @@ class DownloadService:
         
         os.makedirs(self.download_dir, exist_ok=True)
         
+        # Инициализация YouTube API (если доступен)
+        self.youtube_api = None
+        try:
+            from services.youtube_api_service import YouTubeAPIService
+            self.youtube_api = YouTubeAPIService()
+        except Exception as e:
+            print(f"ℹ️ YouTube API not available: {e}")
+        
         # Проверяем переменную окружения для Railway деплоя
         import base64
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
@@ -52,8 +60,11 @@ class DownloadService:
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
-            print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
-            print(f"   Set YOUTUBE_COOKIES_BASE64 environment variable or add cookies.txt/youtube_cookies.txt file")
+            if not self.youtube_api or not self.youtube_api.api_key:
+                print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
+                print(f"   Set YOUTUBE_API_KEY or YOUTUBE_COOKIES_BASE64 environment variable")
+            else:
+                print(f"✅ Using YouTube API instead of cookies")
         
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
@@ -74,6 +85,17 @@ class DownloadService:
         """
         ffmpeg_args = self._get_ffmpeg_args(quality, file_format)
         search_query = f"{artist} - {track_name}"
+        
+        # Если доступен YouTube API, используем его для поиска
+        youtube_url = None
+        if self.youtube_api and self.youtube_api.api_key:
+            print(f"🔍 Searching via YouTube API: {search_query}")
+            video_info = self.youtube_api.search_video(search_query)
+            if video_info:
+                youtube_url = video_info['url']
+                print(f"✅ Found via API: {video_info['title']}")
+            else:
+                print(f"⚠️ API search failed, falling back to yt-dlp search")
         
         # Модифицируем шаблон имени файла чтобы избежать коллизий качества
         safe_name = "".join([c if c.isalnum() or c in " -_" else "_" for c in f"{artist} - {track_name}"])
@@ -119,8 +141,12 @@ class DownloadService:
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
+        # Используем URL от API если доступен, иначе поисковый запрос
+        download_target = youtube_url if youtube_url else search_query
+        
         has_cookies = os.path.exists(self.cookies_path)
-        print(f"🚀 Starting download attempt 1 (Cookies: {'YES' if has_cookies else 'NO'})")
+        api_mode = " (via API)" if youtube_url else ""
+        print(f"🚀 Starting download attempt 1{api_mode} (Cookies: {'YES' if has_cookies else 'NO'})")
         
         try:
             # Attempt 1: Standard comprehensive list
@@ -128,7 +154,7 @@ class DownloadService:
             result = await loop.run_in_executor(
                 None, 
                 self._download_sync, 
-                search_query, 
+                download_target,  # Используем URL от API или поисковый запрос
                 ydl_opts,
                 file_format
             )
@@ -144,7 +170,7 @@ class DownloadService:
                     result = await loop.run_in_executor(
                         None, 
                         self._download_sync, 
-                        search_query, 
+                        download_target,  # Используем тот же target
                         ydl_opts,
                         file_format
                     )
@@ -159,7 +185,7 @@ class DownloadService:
                             result = await loop.run_in_executor(
                                 None, 
                                 self._download_sync, 
-                                search_query, 
+                                download_target,  # Используем тот же target
                                 ydl_opts,
                                 file_format
                             )
