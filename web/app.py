@@ -50,6 +50,29 @@ def get_backup_service():
 # Флаг инициализации БД
 db_initialized = False
 
+def run_background_sync():
+    """Фоновая задача для глубокой синхронизации (Deep Sync)"""
+    try:
+        import threading
+        print(f"🛰️  [BACKGROUND-{threading.get_ident()}] Starting asynchronous Deep Sync task...")
+        
+        # Создаем новый event loop для этого потока
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        from services.telegram_storage_sync import DeepSyncService
+        sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
+        
+        # Запускаем синхронизацию
+        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=500))
+        print(f"✅ [BACKGROUND-{threading.get_ident()}] Deep Sync completed! Found {count} tracks")
+        
+        loop.close()
+    except Exception as e:
+        print(f"❌ [BACKGROUND] Deep Sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+
 def ensure_db_initialized():
     """Ленивая инициализация БД при первом запросе с восстановлением из Telegram"""
     global db_initialized
@@ -79,37 +102,29 @@ def ensure_db_initialized():
             loop.run_until_complete(db.init_db())
             print("✅ [STEP 2/4] Database schema is up to date")
             
-            # 3. ФАЛЛБЭК: Если после восстановления библиотека все еще пуста, запускаем Deep Sync
+            # 3. ФАЛЛБЭК: Если после восстановления библиотека все еще пуста, запускаем Deep Sync в ФОНЕ
             print("📦 [STEP 3/4] Checking if library is empty...")
             is_empty = loop.run_until_complete(db.is_library_empty())
             print(f"📊 [STEP 3/4] Library empty status: {is_empty}")
             
             if is_empty:
-                print("🚀 [STEP 3/4] Library is EMPTY. Triggering automatic Deep Sync...")
-                print("⏳ This may take 1-2 minutes for 500 messages...")
-                from services.telegram_storage_sync import DeepSyncService
-                sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
+                import threading
+                print("🚀 [STEP 3/4] Library is EMPTY. Triggering background Deep Sync...")
                 
-                # Запускаем синхронно, чтобы гарантировать выполнение
-                count = loop.run_until_complete(sync_service.run_deep_sync(range_size=500))
-                print(f"✅ [STEP 3/4] Automatic Deep Sync completed! Found {count} tracks")
+                # Запускаем в отдельном потоке, чтобы не блокировать текущий поток (Gunicorn worker)
+                thread = threading.Thread(target=run_background_sync)
+                thread.daemon = True
+                thread.start()
+                
+                print("🛰️  [STEP 3/4] Background Deep Sync task started. App will remain responsive.")
             else:
-                print("✅ [STEP 3/4] Library has data, skipping Deep Sync")
+                print("✅ [STEP 3/4] Library has data, skipping initial Deep Sync")
             
-            # 4. Финальная проверка
-            print("📦 [STEP 4/4] Final library check...")
-            final_count = loop.run_until_complete(db.is_library_empty())
-            if not final_count:
-                # Получаем количество треков
-                tracks = loop.run_until_complete(db.get_library_tracks(limit=10))
-                print(f"✅ [STEP 4/4] Library ready with {len(tracks)} tracks (showing first 10)")
-            else:
-                print("⚠️  [STEP 4/4] WARNING: Library is still empty!")
-            
+            # Мы закрываем локальный loop, но фоновый поток будет иметь свой собственный
             loop.close()
             db_initialized = True
             print("=" * 80)
-            print("✅ DATABASE INITIALIZATION COMPLETE")
+            print("✅ DATABASE INITIALIZATION TRIGGERED")
             print("=" * 80)
         except Exception as e:
             print(f"❌ Web App: Database init failed: {e}")
