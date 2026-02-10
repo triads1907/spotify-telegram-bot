@@ -63,7 +63,8 @@ class DatabaseManager:
             if "sqlite" in self.database_url:
                 await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
                 await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
-            await conn.run_sync(Base.metadata.create_all)
+            # checkfirst=True предотвращает ошибки если таблицы уже существуют (например, после восстановления из бэкапа)
+            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
         print("✅ База данных инициализирована (WAL mode enabled)")
     
     async def close(self):
