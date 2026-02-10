@@ -57,8 +57,9 @@ def run_background_sync():
         print(f"🛰️  [BACKGROUND-{threading.get_ident()}] Starting asynchronous Deep Sync task...")
         
         # Даем сети время стабилизироваться (критично для Railway)
-        print(f"⏳ [BACKGROUND] Waiting 15s for network to be fully ready...", flush=True)
-        time.sleep(15)
+        # 30 секунд - это время, когда и бот, и веб-сервер уже полностью запущены
+        print(f"⏳ [BACKGROUND] Waiting 30s for network to be fully ready...", flush=True)
+        time.sleep(30)
         
         # Создаем новый event loop для этого потока
         loop = asyncio.new_event_loop()
