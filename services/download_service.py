@@ -35,17 +35,9 @@ class DownloadService:
                 import re
                 cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env).strip()
                 
-                # Диагностика сырой строки
-                print(f"🔍 B64 Prefix (cleaned): {cookies_env[:20]}...")
-                
                 # Ищем начало Netscape файла (Base64 для '# ' это 'IyB')
-                # Это поможет, если в начало попал мусор вроде 'NEW_BASE64_START'
                 if 'IyB' in cookies_env:
-                    idx = cookies_env.find('IyB')
-                    print(f"🎯 Found marker 'IyB' at position {idx}")
-                    cookies_env = cookies_env[idx:]
-                else:
-                    print("⚠️ Marker 'IyB' NOT found in cleaned string!")
+                    cookies_env = cookies_env[cookies_env.find('IyB'):]
                 
                 # Убираем ведущие '=', они могут появиться при неправильном копировании
                 cookies_env = cookies_env.lstrip('=')
@@ -55,22 +47,18 @@ class DownloadService:
                 if missing_padding:
                     cookies_env += '=' * (4 - missing_padding)
                 
-                print(f"📦 Attempting to restore cookies (Cleaned length: {len(cookies_env)})...")
+                print(f"📦 Attempting to restore YouTube cookies...")
                 try:
                     cookies_bytes = base64.b64decode(cookies_env)
-                    # Диагностика байтов
-                    print(f"🧪 First 20 bytes (hex): {cookies_bytes[:20].hex()}")
-                    
                     try:
                         cookies_content = cookies_bytes.decode('utf-8')
                     except UnicodeDecodeError:
-                        print(f"⚠️ UTF-8 decoding failed, trying latin-1...")
                         cookies_content = cookies_bytes.decode('latin-1')
                 except Exception as b64e:
                     print(f"❌ Base64 decoding failed: {b64e}")
                     raise b64e
                 
-                # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
+                # Диагностика: проверим формат
                 is_netscape = '# Netscape' in cookies_content[:100] or '# HTTP' in cookies_content[:100]
                 
                 if len(cookies_content) > 10:
