@@ -544,6 +544,48 @@ body {
     margin-bottom: 24px;
 }
 
+.section-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.view-toggle {
+    display: flex;
+    background: var(--spotify-gray);
+    border-radius: 4px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.view-btn {
+    background: transparent;
+    border: none;
+    color: var(--spotify-light-gray);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.view-btn:hover {
+    color: var(--spotify-white);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.view-btn.active {
+    background: #333;
+    color: var(--spotify-white);
+}
+
+.view-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
 .sync-btn {
     background: transparent;
     border: 1px solid var(--spotify-light-gray);
@@ -593,6 +635,53 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 24px;
+    transition: all var(--transition-normal);
+}
+
+/* List View */
+.results-grid.list-view {
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.results-grid.list-view .track-card {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+.results-grid.list-view .track-card .track-image {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 0;
+    aspect-ratio: 1;
+}
+
+.results-grid.list-view .track-card .track-info {
+    margin-bottom: 0;
+    min-width: 0;
+}
+
+.results-grid.list-view .track-card .track-name {
+    font-size: 15px;
+}
+
+.results-grid.list-view .track-card .track-artist {
+    font-size: 13px;
+}
+
+.results-grid.list-view .track-card .track-actions {
+    flex-direction: row;
+    gap: 8px;
+}
+
+.results-grid.list-view .track-card .action-btn {
+    width: 36px;
+    height: 36px;
+    flex: none;
 }
 
 .track-card {

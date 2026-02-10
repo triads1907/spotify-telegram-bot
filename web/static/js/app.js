@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeSearch();
     initializePlayer();
     initializePlaylists();
+    initializeViewToggle();
     loadLibrary();
 
     if (userData) {
@@ -46,6 +47,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// View Toggle for Discover Section
+function initializeViewToggle() {
+    const viewToggle = document.getElementById('viewToggle');
+    const libraryGrid = document.getElementById('libraryGrid');
+    const savedView = localStorage.getItem('discoverView') || 'grid';
+
+    // Apply saved view
+    if (savedView === 'list') {
+        libraryGrid.classList.add('list-view');
+        document.querySelector('.view-btn[data-view="list"]').classList.add('active');
+        document.querySelector('.view-btn[data-view="grid"]').classList.remove('active');
+    }
+
+    // Toggle view on button click
+    viewToggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('.view-btn');
+        if (!btn) return;
+
+        const view = btn.dataset.view;
+
+        // Update active state
+        viewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Toggle list view class
+        if (view === 'list') {
+            libraryGrid.classList.add('list-view');
+        } else {
+            libraryGrid.classList.remove('list-view');
+        }
+
+        // Save preference
+        localStorage.setItem('discoverView', view);
+    });
+}
 
 // Auth Logic
 async function checkAuthToken() {
