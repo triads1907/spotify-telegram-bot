@@ -102,8 +102,8 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            # Максимально гибкий выбор формата - принимаем любой аудио формат
-            'format': 'bestaudio/best',
+            # Принимаем любое лучшее аудио. 'ba' - сокращение от 'bestaudio'
+            'format': 'ba/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
@@ -119,12 +119,12 @@ class DownloadService:
             'extract_flat': False,
             # Используем default_search только если нет прямого URL от API
             'default_search': 'ytsearch1' if not youtube_url else None,
-            # Обход блокировки YouTube "Sign in to confirm you're not a bot"
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'web_music', 'android', 'web'],
+                    # Если используем po_token: web, то и web клиент должен быть в начале
+                    'player_client': ['web', 'web_music', 'ios', 'android'],
                     'skip': ['translated_subs'],
-                    # Автоматическое извлечение po_token и visitor_data (работает без кук!)
+                    # Автоматическое извлечение po_token и visitor_data
                     'po_token': 'web',
                 }
             },
