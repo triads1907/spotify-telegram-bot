@@ -63,7 +63,8 @@ def run_background_sync():
         sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
         
         # Запускаем синхронизацию
-        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=1000))
+        print(f"🛰️  [BACKGROUND] Triggering deep scan with 5000 messages...", flush=True)
+        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=5000))
         print(f"✅ [BACKGROUND-{threading.get_ident()}] Deep Sync completed! Found {count} tracks")
         
         loop.close()

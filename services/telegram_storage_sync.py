@@ -121,8 +121,16 @@ class DeepSyncService:
                         consecutive_errors = 0
                         print(f"✅ [SYNC] Recovered: {artist} - {title}", flush=True)
                     else:
-                        consecutive_errors += 1
+                        # Сообщение существует, но это не аудио (например, бэкап БД)
+                        # Мы обнуляем или просто не инкрементируем счетчик ошибок "конца истории"
+                        if msg_id % 100 == 0:
+                            print(f"ℹ️  [SYNC] ID {msg_id} exists but is not audio. Continuing...", flush=True)
+                        consecutive_errors = 0 
+                elif resp.status_code == 400:
+                    # Сообщение не найдено - вот это настоящий пропуск в истории
+                    consecutive_errors += 1
                 else:
+                    # Другие ошибки (Rate limit и т.д.)
                     consecutive_errors += 1
                     
                 if consecutive_errors > 200:
