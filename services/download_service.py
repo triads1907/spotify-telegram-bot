@@ -95,6 +95,14 @@ class DownloadService:
             # Проверка yt-dlp версии
             import yt_dlp
             print(f"✅ [2026 Environment] yt-dlp version: {yt_dlp.version.__version__}")
+            
+            # Check ffmpeg
+            try:
+                ffmpeg_version = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().splitlines()[0]
+                print(f"✅ [2026 Environment] ffmpeg detected: {ffmpeg_version}")
+            except FileNotFoundError:
+                print(f"⚠️ [2026 Environment] ffmpeg NOT found! Conversions to MP3 will fail.")
+                
         except Exception as e:
             print(f"⚠️ [2026 Environment] Diagnostic warning: {e}")
             print(f"ℹ️ YouTube downloads might fail without a JS runtime on some tracks.")
@@ -132,7 +140,7 @@ class DownloadService:
         return "\n".join(sanitized) + "\n"
 
     def _check_environment(self):
-        print(f"🚀 DownloadService v9 (Blacklist Search) Loaded")
+        print(f"🚀 DownloadService v13 (Robust File Resolution) Loaded")
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
@@ -166,7 +174,7 @@ class DownloadService:
         # Handle Search Results / Playlist
         entries = [info]
         if 'entries' in info:
-            entries = [e for e in info['entries'] if e]
+            entries = [e for e in info['entries'] if e] # Filter None entries (from ignoreerrors=True)
 
         # Check each entry to see if its file exists
         for i, entry in enumerate(entries):
@@ -188,15 +196,25 @@ class DownloadService:
                     print(f"✅ Found file via metadata match: {potential_path}")
                     return potential_path, entry
 
-        print("⚠️ No direct match found in entries. Checking recent files...")
-        # 3. Fallback: Recent file
-        pattern = os.path.join(download_dir, f'*.{file_format}')
-        files = glob.glob(pattern)
+        print("⚠️ No direct match found in entries. Checking recent files (Universal Fallback)...")
+        # 3. Fallback: Recent file (Universal - ignores extension/name matches)
+        # Scan for ANY file type that might have been downloaded (mp3, webm, m4a, opus)
+        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4']
+        recent_candidates = []
+        
         now = time.time()
-        recent_files = [f for f in files if now - os.path.getctime(f) < 60]
-        if recent_files:
-            return max(recent_files, key=os.path.getctime), entries[0] if entries else info
+        for ext in possible_extensions:
+            pattern = os.path.join(download_dir, f'*.{ext}')
+            files = glob.glob(pattern)
+            recent_candidates.extend([f for f in files if now - os.path.getctime(f) < 60])
             
+        if recent_candidates:
+            # Pick the most recent one
+            best_candidate = max(recent_candidates, key=os.path.getctime)
+            print(f"✅ Found file via Universal Fallback: {best_candidate}")
+            return best_candidate, entries[0] if entries else info
+            
+        print("❌ All search results failed or no file written to disk.")
         return None, info
 
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
@@ -439,7 +457,8 @@ class DownloadService:
         ffmpeg_args = self._get_ffmpeg_args(quality, file_format)
         
         # Модифицируем шаблон имени файла чтобы избежать коллизий качества
-        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
+        # v13: Ограничиваем длину имени файла до 50 символов чтобы избежать OS Error
+        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])[:50]
         out_tmpl = os.path.join(self.download_dir, f"{safe_query}_{quality}.%(ext)s")
         
         ydl_opts = {
@@ -503,6 +522,7 @@ class DownloadService:
                         ydl_opts['max_downloads'] = 1
                         ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
                         # v12: Уникальные имена файлов для каждого кандидата в поиске
+                        # v13: Truncate safe_query
                         ydl_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
                     # Попытка 2: Переход на Music Web (для клипов)
