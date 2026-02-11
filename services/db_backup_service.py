@@ -115,8 +115,6 @@ class DatabaseBackupService:
                     pin_success = self.storage.pin_message(result['message_id'])
                     if pin_success:
                         print(f"📌 Backup message pinned: {result['message_id']}")
-                else:
-                    print("⚠️  Warning: Backup created but no message_id returned for pinning")
                     
                     # Сохраняем message_id бэкапа для безопасного удаления
                     self.backup_message_ids.append(result['message_id'])
