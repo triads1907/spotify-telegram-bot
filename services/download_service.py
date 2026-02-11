@@ -142,9 +142,11 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_music', 'android', 'mweb'],
+                    'player_client': ['android', 'ios', 'mweb'],
                     'skip': ['translated_subs'],
-                    'po_token': 'android_music',
+                    'po_token': 'android',
+                    'include_dash_manifest': True,
+                    'include_hls_manifest': True,
                 }
             },
             'referer': 'https://www.google.com/',
@@ -161,31 +163,27 @@ class DownloadService:
         loop = asyncio.get_event_loop()
         
         try:
-            # Попытка 1: Стандартное лучшее аудио
-            print(f"🚀 Download Attempt 1 (ba/best): {search_query}")
+            # Попытка 1: February 2026 Stable Attempt
+            print(f"🚀 Download Attempt 1 (Stable Mobile 2026): {search_query}")
             result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Universal + Manifests + Mobile)...")
-                    
-                    # Попытка 2: Расширенный захват + явно включаем манифесты + мобильные
-                    ydl_opts['format'] = '*' 
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android_music', 'android', 'ios']
-                    ydl_opts['extractor_args']['youtube']['include_dash_manifest'] = True
-                    ydl_opts['extractor_args']['youtube']['include_hls_manifest'] = True
-                    if 'skip' in ydl_opts['extractor_args']['youtube']:
-                        ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
-                    
-                    await asyncio.sleep(2)
-                    result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
-                    
-                    # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
+                    # Попытка 2: Переход на TV-клиенты (самые стойкие)
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV/iOS + No PO-Token)...")
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'ios', 'web_embedded']
+                        print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (TV Capture)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
+                        
+                        await asyncio.sleep(2)
+                        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+                    
+                    # Попытка 3: Универсальный захват без PO-Token + iOS
+                    if result and isinstance(result, dict) and 'error' in result:
+                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (Universal Broad + No PO)...")
+                        ydl_opts['format'] = '*' 
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'tv']
                         if 'po_token' in ydl_opts['extractor_args']['youtube']:
                             del ydl_opts['extractor_args']['youtube']['po_token']
                         
@@ -358,9 +356,11 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_music', 'android', 'mweb'],
+                    'player_client': ['android', 'ios', 'mweb'],
                     'skip': ['translated_subs'],
-                    'po_token': 'android_music',
+                    'po_token': 'android',
+                    'include_dash_manifest': True,
+                    'include_hls_manifest': True,
                 }
             },
             'referer': 'https://www.google.com/',
@@ -376,31 +376,27 @@ class DownloadService:
         loop = asyncio.get_event_loop()
         
         try:
-            # Попытка 1: Стандартное лучшее аудио
-            print(f"🚀 Query Download Attempt 1 (ba/best): {search_query}")
+            # Попытка 1: February 2026 Stable Attempt
+            print(f"🚀 Query Download Attempt 1 (Stable Mobile 2026): {search_query}")
             result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
             
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Universal + Manifests + Mobile)...")
-                    
-                    # Попытка 2: Расширенный захват + явно включаем манифесты + мобильные
-                    ydl_opts['format'] = '*' 
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android_music', 'android', 'ios']
-                    ydl_opts['extractor_args']['youtube']['include_dash_manifest'] = True
-                    ydl_opts['extractor_args']['youtube']['include_hls_manifest'] = True
-                    if 'skip' in ydl_opts['extractor_args']['youtube']:
-                        ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
-                    
-                    await asyncio.sleep(2)
-                    result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
-                    
-                    # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
+                    # Попытка 2: Переход на TV-клиенты (самые стойкие)
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV/iOS + No PO-Token)...")
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'ios', 'web_embedded']
+                        print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (TV Capture)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
+                        
+                        await asyncio.sleep(2)
+                        result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+                    
+                    # Попытка 3: Универсальный захват без PO-Token + iOS
+                    if result and isinstance(result, dict) and 'error' in result:
+                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (Universal Broad + No PO)...")
+                        ydl_opts['format'] = '*' 
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'tv']
                         if 'po_token' in ydl_opts['extractor_args']['youtube']:
                             del ydl_opts['extractor_args']['youtube']['po_token']
                         
