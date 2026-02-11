@@ -132,6 +132,7 @@ class DownloadService:
         return "\n".join(sanitized) + "\n"
 
     def _check_environment(self):
+        print(f"🚀 DownloadService v9 (Blacklist Search) Loaded")
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
