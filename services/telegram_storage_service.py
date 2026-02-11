@@ -254,7 +254,12 @@ class TelegramStorageService:
                 },
                 timeout=30.0
             )
-            return response.status_code == 200 and response.json().get('ok', False)
+            is_ok = response.status_code == 200 and response.json().get('ok', False)
+            
+            if not is_ok:
+                print(f"❌ Failed to pin message {message_id}: {response.text}")
+            
+            return is_ok
         except Exception as e:
             print(f"❌ Error pinning message: {e}")
             return False
