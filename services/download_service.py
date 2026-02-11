@@ -169,30 +169,35 @@ class DownloadService:
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (ba*/b* + HLS/DASH + Mobile)...")
+                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Universal + Mobile)...")
                     
-                    # Попытка 2: Расширенный поиск аудио/видео + разрешаем HLS/DASH + только мобильные
-                    ydl_opts['format'] = 'ba*/b*' 
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
-                    # Разрешаем манифесты, если они были пропущены
+                    # Попытка 2: Расширенный захват + разрешаем манифесты + мобильные
+                    ydl_opts['format'] = '*' 
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['mweb', 'android', 'ios']
                     if 'skip' in ydl_opts['extractor_args']['youtube']:
                         ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
                     
-                    # Маленькая задержка перед ретраем
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(2)
                     result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                     
-                    # Если всё ещё ошибка - Попытка 3: Универсальный захват без PO-Token
+                    # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. FINAL ATTEMPT 3 (* + TV/Embedded + No PO-Token)...")
-                        ydl_opts['format'] = '*' # Берем ВООБЩЕ любой доступный поток
+                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV/Embedded + No PO-Token)...")
                         ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
-                        # Отключение PO-Token может помочь на Stage 3 для TV/Embedded
                         if 'po_token' in ydl_opts['extractor_args']['youtube']:
                             del ydl_opts['extractor_args']['youtube']['po_token']
                         
-                        await asyncio.sleep(1.5)
+                        await asyncio.sleep(2)
                         result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+                        
+                        # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
+                        if result and isinstance(result, dict) and 'error' in result:
+                            print(f"⚠️ Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
+                            ydl_opts['cookiefile'] = None
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web', 'mweb', 'android']
+                            
+                            await asyncio.sleep(2)
+                            result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             return result
         except Exception as e:
@@ -330,9 +335,13 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_query}_{quality}.%(ext)s")
         
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': 'bestaudio/best', # Этап 1: Стандартное аудио
             'outtmpl': out_tmpl,
             'overwrites': True,
+            'cachedir': False,
+            'source_address': '0.0.0.0', # Принудительно IPv4 для Railway
+            'noplaylist': True,
+            'ignore_no_formats_error': True,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': file_format,
@@ -345,33 +354,64 @@ class DownloadService:
             'no_warnings': True,
             'extract_flat': False,
             'default_search': 'ytsearch1',
-            # Обход блокировки YouTube "Sign in to confirm you're not a bot"
-            # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android'],
-                    'skip': ['hls', 'dash', 'translated_subs'],
-                    'include_dash_manifest': False,
-                    'include_hls_manifest': False,
+                    'player_client': ['mweb', 'web_music', 'android', 'ios'],
+                    'skip': ['translated_subs'],
+                    'po_token': 'mweb',
                 }
             },
+            'referer': 'https://www.google.com/',
+            'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'age_limit': 99,  # Обход возрастных ограничений
+            'age_limit': 99,
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
+        loop = asyncio.get_event_loop()
+        
         try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, 
-                self._download_sync, 
-                search_query, 
-                ydl_opts,
-                file_format
-            )
+            # Попытка 1: Стандартное лучшее аудио
+            print(f"🚀 Query Download Attempt 1 (ba/best): {search_query}")
+            result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+            
+            # Если ошибка формата или блокировка
+            if result and isinstance(result, dict) and 'error' in result:
+                err_msg = result['error']
+                if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
+                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Universal + Mobile)...")
+                    
+                    # Попытка 2: Расширенный захват + разрешаем манифесты + мобильные
+                    ydl_opts['format'] = '*' 
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['mweb', 'android', 'ios']
+                    if 'skip' in ydl_opts['extractor_args']['youtube']:
+                        ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
+                    
+                    await asyncio.sleep(2)
+                    result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+                    
+                    # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
+                    if result and isinstance(result, dict) and 'error' in result:
+                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV/Embedded + No PO-Token)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        if 'po_token' in ydl_opts['extractor_args']['youtube']:
+                            del ydl_opts['extractor_args']['youtube']['po_token']
+                        
+                        await asyncio.sleep(2)
+                        result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+                        
+                        # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
+                        if result and isinstance(result, dict) and 'error' in result:
+                            print(f"⚠️ Query Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
+                            ydl_opts['cookiefile'] = None
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web', 'mweb', 'android']
+                            
+                            await asyncio.sleep(2)
+                            result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+            
             return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
