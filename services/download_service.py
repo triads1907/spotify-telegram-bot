@@ -158,6 +158,41 @@ class DownloadService:
             return None
         return match_filter
 
+    def _resolve_downloaded_file(self, ydl, info, file_format, download_dir):
+        """Logic to finding the downloaded file on disk"""
+        import glob
+        import time
+
+        # Handle Search Results / Playlist
+        entries = [info]
+        if 'entries' in info:
+            entries = [e for e in info['entries'] if e]
+
+        # Check each entry to see if its file exists
+        for entry in entries:
+            # 1. Predict 
+            base_path = ydl.prepare_filename(entry)
+            file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
+            if os.path.exists(file_path):
+                return file_path, entry
+            
+            # 2. Check metadata
+            actual_filename = entry.get('_filename')
+            if actual_filename:
+                potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
+                if os.path.exists(potential_path):
+                    return potential_path, entry
+
+        # 3. Fallback: Recent file
+        pattern = os.path.join(download_dir, f'*.{file_format}')
+        files = glob.glob(pattern)
+        now = time.time()
+        recent_files = [f for f in files if now - os.path.getctime(f) < 60]
+        if recent_files:
+            return max(recent_files, key=os.path.getctime), entries[0] if entries else info
+            
+        return None, info
+
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
         if file_format != 'flac':
@@ -354,51 +389,30 @@ class DownloadService:
                 
                 if not info:
                     return None
+                    
+                file_path, valid_entry = self._resolve_downloaded_file(ydl, info, file_format, self.download_dir)
                 
+                # Update info with the actual track data
+                if valid_entry:
+                    info = valid_entry
+
                 title = info.get('title', 'Unknown')
                 duration = info.get('duration', 0)
                 
-                import glob
-                import time
-                
-                # 1. Пробуем предсказанный путь
-                base_path = ydl.prepare_filename(info)
-                file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
-                
-                # 2. Если не найден, пробуем путь из метаданных yt-dlp
-                if not os.path.exists(file_path):
-                    actual_filename = info.get('_filename')
-                    if actual_filename:
-                        potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
-                        if os.path.exists(potential_path):
-                            file_path = potential_path
-                
-                # 3. Если всё еще не найден (самый надежный способ для сложных имен), 
-                # ищем файл с нужным форматом, созданный в последние 60 секунд
-                if not os.path.exists(file_path):
-                    pattern = os.path.join(self.download_dir, f'*.{file_format}')
-                    files = glob.glob(pattern)
-                    now = time.time()
-                    # Берем те, что созданы недавно
-                    recent_files = [f for f in files if now - os.path.getctime(f) < 60]
-                    if recent_files:
-                        # Берем самый новый из недавних
-                        file_path = max(recent_files, key=os.path.getctime)
-                
-                # 4. Проверяем финальный путь
+                # Final verification
                 file_size = 0
-                if os.path.exists(file_path):
+                if file_path and os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
                 else:
-                    # Логируем неудачу для отладки
                     print(f"⚠️ Файл не найден после всех попыток: {file_path}")
-                    # Попробуем взять просто самый последний файл этого формата (крайняя мера)
+                    # Last ditch effort
+                    import glob
                     pattern = os.path.join(self.download_dir, f'*.{file_format}')
                     all_files = glob.glob(pattern)
                     if all_files:
                         file_path = max(all_files, key=os.path.getctime)
                         file_size = os.path.getsize(file_path)
-                
+
                 return {
                     'file_path': file_path,
                     'title': title,
