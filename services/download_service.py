@@ -169,23 +169,29 @@ class DownloadService:
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (ba*/b* + Mobile only)...")
+                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (ba*/b* + HLS/DASH + Mobile)...")
                     
-                    # Попытка 2: Расширенный поиск аудио/видео + только мобильные
+                    # Попытка 2: Расширенный поиск аудио/видео + разрешаем HLS/DASH + только мобильные
                     ydl_opts['format'] = 'ba*/b*' 
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
+                    # Разрешаем манифесты, если они были пропущены
+                    if 'skip' in ydl_opts['extractor_args']['youtube']:
+                        ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
                     
                     # Маленькая задержка перед ретраем
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(1.5)
                     result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                     
-                    # Если всё ещё ошибка - Попытка 3: Универсальный захват
+                    # Если всё ещё ошибка - Попытка 3: Универсальный захват без PO-Token
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. FINAL ATTEMPT 3 (* + TV/Embedded)...")
+                        print(f"⚠️ Attempt 2 failed. FINAL ATTEMPT 3 (* + TV/Embedded + No PO-Token)...")
                         ydl_opts['format'] = '*' # Берем ВООБЩЕ любой доступный поток
                         ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        # Отключение PO-Token может помочь на Stage 3 для TV/Embedded
+                        if 'po_token' in ydl_opts['extractor_args']['youtube']:
+                            del ydl_opts['extractor_args']['youtube']['po_token']
                         
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(1.5)
                         result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             return result
