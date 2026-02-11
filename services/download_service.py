@@ -169,11 +169,15 @@ class DownloadService:
             entries = [e for e in info['entries'] if e]
 
         # Check each entry to see if its file exists
-        for entry in entries:
+        for i, entry in enumerate(entries):
             # 1. Predict 
             base_path = ydl.prepare_filename(entry)
             file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
+            
+            print(f"🔍 Checking entry {i} ({entry.get('id')}): {file_path}")
+            
             if os.path.exists(file_path):
+                print(f"✅ Found file at: {file_path}")
                 return file_path, entry
             
             # 2. Check metadata
@@ -181,8 +185,10 @@ class DownloadService:
             if actual_filename:
                 potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
                 if os.path.exists(potential_path):
+                    print(f"✅ Found file via metadata match: {potential_path}")
                     return potential_path, entry
 
+        print("⚠️ No direct match found in entries. Checking recent files...")
         # 3. Fallback: Recent file
         pattern = os.path.join(download_dir, f'*.{file_format}')
         files = glob.glob(pattern)
@@ -292,6 +298,9 @@ class DownloadService:
                         ydl_opts['noplaylist'] = False # Разрешаем перебор плейлиста поиска
                         ydl_opts['max_downloads'] = 1 # Качаем только 1 успешный трек
                         ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
+                        # v12: Уникальные имена файлов для каждого кандидата в поиске
+                        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
+                        ydl_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
                     
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
@@ -493,6 +502,8 @@ class DownloadService:
                         ydl_opts['noplaylist'] = False
                         ydl_opts['max_downloads'] = 1
                         ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
+                        # v12: Уникальные имена файлов для каждого кандидата в поиске
+                        ydl_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
