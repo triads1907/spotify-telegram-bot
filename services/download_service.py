@@ -141,6 +141,14 @@ class DownloadService:
             else:
                 print(f"✅ Using YouTube API instead of cookies")
         
+    def _extract_youtube_id(self, error_msg: str) -> Optional[str]:
+        """Извлечение YouTube ID из сообщения об ошибке"""
+        import re
+        match = re.search(r'\[youtube\] ([a-zA-Z0-9_-]{11}):', error_msg)
+        if match:
+            return match.group(1)
+        return None
+
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
         if file_format != 'flac':
@@ -224,18 +232,22 @@ class DownloadService:
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
-                is_unavailable = "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg or "Video unavailable" in err_msg
+                failed_id = self._extract_youtube_id(err_msg)
+                is_unavailable = any(term in err_msg for term in ["format is not available", "bot", "Sign in", "403", "Video unavailable"])
                 
                 if is_unavailable:
-                    # Хлебные крошки: если мы качали по прямой ссылке и она сдохла - пробуем поиск
-                    if youtube_url:
-                        print(f"⚠️ Direct ID {youtube_url} failed. RETRYING AS SEARCH for better availability...")
+                    # Черный список: если ID сдох, принудительно исключаем его из поиска
+                    if failed_id:
+                        print(f"🚫 Blacklisting failing ID {failed_id} and retrying alternative search...")
+                        ydl_opts['match_filter'] = f'id != "{failed_id}"'
+                    
+                    if youtube_url or failed_id:
                         youtube_url = None
-                        download_target = search_query # Переключаемся на поиск
-                        ydl_opts['default_search'] = 'ytsearch1'
+                        download_target = search_query 
+                        ydl_opts['default_search'] = 'ytsearch5' # Берем 5 вариантов вместо 1
                     
                     # Попытка 2: Переход на Music Web (для клипов)
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode)...")
+                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
                     
                     await asyncio.sleep(2)
@@ -444,11 +456,17 @@ class DownloadService:
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
-                is_unavailable = "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg or "Video unavailable" in err_msg
+                failed_id = self._extract_youtube_id(err_msg)
+                is_unavailable = any(term in err_msg for term in ["format is not available", "bot", "Sign in", "403", "Video unavailable"])
 
                 if is_unavailable:
+                    if failed_id:
+                        print(f"🚫 Blacklisting query ID {failed_id} and retrying alternative search...")
+                        ydl_opts['match_filter'] = f'id != "{failed_id}"'
+                        ydl_opts['default_search'] = 'ytsearch5'
+
                     # Попытка 2: Переход на Music Web (для клипов)
-                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode)...")
+                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
                     
                     await asyncio.sleep(2)
