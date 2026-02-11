@@ -72,12 +72,29 @@ class DownloadService:
                 
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
-                print(f"✅ YouTube cookies restored/updated to: {self.cookies_path}")
+                print(f"✅ YouTube cookies restored to {self.cookies_path}")
             except Exception as e:
-                print(f"❌ Failed to restore cookies from environment: {e}")
+                print(f"⚠️ Failed to restore YouTube cookies: {e}")
                 import traceback
                 traceback.print_exc()
         
+        # Диагностика окружения для 2026 года (SABR / n-challenge)
+        self._check_environment()
+
+    def _check_environment(self):
+        """Проверка наличия JS Runtime для решения n-challenge"""
+        try:
+            import subprocess
+            node_version = subprocess.check_output(['node', '-v'], stderr=subprocess.STDOUT).decode().strip()
+            print(f"✅ [2026 Environment] Node.js detected: {node_version}")
+            
+            # Проверка yt-dlp версии
+            import yt_dlp
+            print(f"✅ [2026 Environment] yt-dlp version: {yt_dlp.version.__version__}")
+        except Exception as e:
+            print(f"⚠️ [2026 Environment] Diagnostic warning: {e}")
+            print(f"ℹ️ YouTube downloads might fail without a JS runtime on some tracks.")
+
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
@@ -142,13 +159,13 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'ios', 'mweb'],
+                    'player_client': ['android', 'ios'],
                     'skip': ['translated_subs'],
-                    'po_token': 'android',
                     'include_dash_manifest': True,
                     'include_hls_manifest': True,
                 }
             },
+            'format_sort': ['acodec:opus', 'res', 'lang', 'quality'],
             'referer': 'https://www.google.com/',
             'noproxy': True,
             'socket_timeout': 30,
@@ -163,7 +180,7 @@ class DownloadService:
         loop = asyncio.get_event_loop()
         
         try:
-            # Попытка 1: February 2026 Stable Attempt
+            # Попытка 1: February 2026 Mobile Attempt
             print(f"🚀 Download Attempt 1 (Stable Mobile 2026): {search_query}")
             result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
@@ -171,33 +188,32 @@ class DownloadService:
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
-                    # Попытка 2: Переход на TV-клиенты (самые стойкие)
+                    # Попытка 2: Переход на Music Web (для клипов)
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (TV Capture)...")
+                        print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
+                        
+                        await asyncio.sleep(2)
+                        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+                    
+                    # Попытка 3: TV-клиенты (последний рубеж против SABR)
+                    if result and isinstance(result, dict) and 'error' in result:
+                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV Capture)...")
+                        ydl_opts['format'] = '*' 
                         ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
                         
                         await asyncio.sleep(2)
                         result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                     
-                    # Попытка 3: Универсальный захват без PO-Token + iOS
+                    # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (Universal Broad + No PO)...")
-                        ydl_opts['format'] = '*' 
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'tv']
-                        if 'po_token' in ydl_opts['extractor_args']['youtube']:
-                            del ydl_opts['extractor_args']['youtube']['po_token']
+                        print(f"⚠️ Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
+                        ydl_opts['format'] = '*'
+                        ydl_opts['cookiefile'] = None
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
                         
                         await asyncio.sleep(2)
                         result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
-                        
-                        # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
-                        if result and isinstance(result, dict) and 'error' in result:
-                            print(f"⚠️ Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
-                            ydl_opts['cookiefile'] = None
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
-                            
-                            await asyncio.sleep(2)
-                            result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
             
             return result
         except Exception as e:
@@ -356,13 +372,13 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'ios', 'mweb'],
+                    'player_client': ['android', 'ios'],
                     'skip': ['translated_subs'],
-                    'po_token': 'android',
                     'include_dash_manifest': True,
                     'include_hls_manifest': True,
                 }
             },
+            'format_sort': ['acodec:opus', 'res', 'lang', 'quality'],
             'referer': 'https://www.google.com/',
             'noproxy': True,
             'socket_timeout': 30,
@@ -376,7 +392,7 @@ class DownloadService:
         loop = asyncio.get_event_loop()
         
         try:
-            # Попытка 1: February 2026 Stable Attempt
+            # Попытка 1: February 2026 Mobile Attempt
             print(f"🚀 Query Download Attempt 1 (Stable Mobile 2026): {search_query}")
             result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
             
@@ -384,33 +400,32 @@ class DownloadService:
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
                 if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
-                    # Попытка 2: Переход на TV-клиенты (самые стойкие)
+                    # Попытка 2: Переход на Music Web (для клипов)
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (TV Capture)...")
+                        print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
+                        
+                        await asyncio.sleep(2)
+                        result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+                    
+                    # Попытка 3: TV-клиенты (последний рубеж против SABR)
+                    if result and isinstance(result, dict) and 'error' in result:
+                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV Capture)...")
+                        ydl_opts['format'] = '*' 
                         ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
                         
                         await asyncio.sleep(2)
                         result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
                     
-                    # Попытка 3: Универсальный захват без PO-Token + iOS
+                    # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (Universal Broad + No PO)...")
-                        ydl_opts['format'] = '*' 
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'tv']
-                        if 'po_token' in ydl_opts['extractor_args']['youtube']:
-                            del ydl_opts['extractor_args']['youtube']['po_token']
+                        print(f"⚠️ Query Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
+                        ydl_opts['format'] = '*'
+                        ydl_opts['cookiefile'] = None
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
                         
                         await asyncio.sleep(2)
                         result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
-                        
-                        # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
-                        if result and isinstance(result, dict) and 'error' in result:
-                            print(f"⚠️ Query Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
-                            ydl_opts['cookiefile'] = None
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
-                            
-                            await asyncio.sleep(2)
-                            result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
             
             return result
         except Exception as e:
