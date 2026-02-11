@@ -150,6 +150,14 @@ class DownloadService:
             return match.group(1)
         return None
 
+    def _create_blacklist_filter(self, failed_id: str):
+        """Создает фильтр для блокировки конкретного ID"""
+        def match_filter(info_dict, incomplete=False):
+            if info_dict.get('id') == failed_id:
+                return f"Video ID {failed_id} is blacklisted"
+            return None
+        return match_filter
+
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
         if file_format != 'flac':
@@ -240,12 +248,14 @@ class DownloadService:
                     # Черный список: если ID сдох, принудительно исключаем его из поиска
                     if failed_id:
                         print(f"🚫 Blacklisting failing ID {failed_id} and retrying alternative search...")
-                        ydl_opts['match_filter'] = f'id != "{failed_id}"'
+                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
                     
                     if youtube_url or failed_id:
                         youtube_url = None
                         download_target = search_query 
-                        ydl_opts['default_search'] = 'ytsearch5' # Берем 5 вариантов вместо 1
+                        ydl_opts['default_search'] = 'ytsearch5' # Берем 5 вариантов
+                        ydl_opts['noplaylist'] = False # Разрешаем перебор плейлиста поиска
+                        ydl_opts['max_downloads'] = 1 # Качаем только 1 успешный трек
                     
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
@@ -463,8 +473,10 @@ class DownloadService:
                 if is_unavailable:
                     if failed_id:
                         print(f"🚫 Blacklisting query ID {failed_id} and retrying alternative search...")
-                        ydl_opts['match_filter'] = f'id != "{failed_id}"'
+                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
                         ydl_opts['default_search'] = 'ytsearch5'
+                        ydl_opts['noplaylist'] = False
+                        ydl_opts['max_downloads'] = 1
 
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
