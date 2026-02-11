@@ -256,6 +256,7 @@ class DownloadService:
                         ydl_opts['default_search'] = 'ytsearch5' # Берем 5 вариантов
                         ydl_opts['noplaylist'] = False # Разрешаем перебор плейлиста поиска
                         ydl_opts['max_downloads'] = 1 # Качаем только 1 успешный трек
+                        ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
                     
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
@@ -477,6 +478,7 @@ class DownloadService:
                         ydl_opts['default_search'] = 'ytsearch5'
                         ydl_opts['noplaylist'] = False
                         ydl_opts['max_downloads'] = 1
+                        ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
 
                     # Попытка 2: Переход на Music Web (для клипов)
                     print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
