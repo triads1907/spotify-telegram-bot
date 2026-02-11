@@ -142,9 +142,9 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['mweb', 'web_music', 'android', 'ios'],
+                    'player_client': ['android_music', 'android', 'mweb'],
                     'skip': ['translated_subs'],
-                    'po_token': 'mweb',
+                    'po_token': 'android_music',
                 }
             },
             'referer': 'https://www.google.com/',
@@ -168,12 +168,14 @@ class DownloadService:
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
-                if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Universal + Mobile)...")
+                if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
+                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Universal + Manifests + Mobile)...")
                     
-                    # Попытка 2: Расширенный захват + разрешаем манифесты + мобильные
+                    # Попытка 2: Расширенный захват + явно включаем манифесты + мобильные
                     ydl_opts['format'] = '*' 
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['mweb', 'android', 'ios']
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android_music', 'android', 'ios']
+                    ydl_opts['extractor_args']['youtube']['include_dash_manifest'] = True
+                    ydl_opts['extractor_args']['youtube']['include_hls_manifest'] = True
                     if 'skip' in ydl_opts['extractor_args']['youtube']:
                         ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
                     
@@ -182,8 +184,8 @@ class DownloadService:
                     
                     # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV/Embedded + No PO-Token)...")
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV/iOS + No PO-Token)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'ios', 'web_embedded']
                         if 'po_token' in ydl_opts['extractor_args']['youtube']:
                             del ydl_opts['extractor_args']['youtube']['po_token']
                         
@@ -194,7 +196,7 @@ class DownloadService:
                         if result and isinstance(result, dict) and 'error' in result:
                             print(f"⚠️ Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
                             ydl_opts['cookiefile'] = None
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web', 'mweb', 'android']
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
                             
                             await asyncio.sleep(2)
                             result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
@@ -356,9 +358,9 @@ class DownloadService:
             'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['mweb', 'web_music', 'android', 'ios'],
+                    'player_client': ['android_music', 'android', 'mweb'],
                     'skip': ['translated_subs'],
-                    'po_token': 'mweb',
+                    'po_token': 'android_music',
                 }
             },
             'referer': 'https://www.google.com/',
@@ -381,12 +383,14 @@ class DownloadService:
             # Если ошибка формата или блокировка
             if result and isinstance(result, dict) and 'error' in result:
                 err_msg = result['error']
-                if "format is not available" in err_msg or "bot" in err_msg or "403" in err_msg:
-                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Universal + Mobile)...")
+                if "format is not available" in err_msg or "bot" in err_msg or "Sign in" in err_msg or "403" in err_msg:
+                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Universal + Manifests + Mobile)...")
                     
-                    # Попытка 2: Расширенный захват + разрешаем манифесты + мобильные
+                    # Попытка 2: Расширенный захват + явно включаем манифесты + мобильные
                     ydl_opts['format'] = '*' 
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['mweb', 'android', 'ios']
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android_music', 'android', 'ios']
+                    ydl_opts['extractor_args']['youtube']['include_dash_manifest'] = True
+                    ydl_opts['extractor_args']['youtube']['include_hls_manifest'] = True
                     if 'skip' in ydl_opts['extractor_args']['youtube']:
                         ydl_opts['extractor_args']['youtube']['skip'] = [s for s in ydl_opts['extractor_args']['youtube']['skip'] if s not in ['hls', 'dash']]
                     
@@ -395,8 +399,8 @@ class DownloadService:
                     
                     # Если всё ещё ошибка - Попытка 3: TV/Embedded без PO-Token
                     if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV/Embedded + No PO-Token)...")
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV/iOS + No PO-Token)...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'ios', 'web_embedded']
                         if 'po_token' in ydl_opts['extractor_args']['youtube']:
                             del ydl_opts['extractor_args']['youtube']['po_token']
                         
@@ -407,7 +411,7 @@ class DownloadService:
                         if result and isinstance(result, dict) and 'error' in result:
                             print(f"⚠️ Query Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
                             ydl_opts['cookiefile'] = None
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web', 'mweb', 'android']
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
                             
                             await asyncio.sleep(2)
                             result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
