@@ -86,29 +86,41 @@ class DownloadService:
         self._check_environment()
 
     def _check_environment(self):
-        """Проверка наличия JS Runtime для решения n-challenge"""
+        """Проверка окружения и диагностика (v15)"""
+        print(f"🚀 DownloadService v15 (Unconditional Fallback) Loaded")
+        print(f"📂 Download directory: {self.download_dir}")
+        print(f"📍 Current Workdir: {os.getcwd()}")
+        
         try:
             import subprocess
-            node_version = subprocess.check_output(['node', '-v'], stderr=subprocess.STDOUT).decode().strip()
-            print(f"✅ [2026 Environment] Node.js detected: {node_version}")
-            
-            print(f"✅ [2026 Environment] yt-dlp version: {yt_dlp.version.__version__}")
+            # Check Node.js
+            try:
+                node_version = subprocess.check_output(['node', '-v'], stderr=subprocess.STDOUT).decode().strip()
+                print(f"✅ [2026] Node.js detected: {node_version}")
+            except Exception:
+                print(f"⚠️ [2026] Node.js NOT found! YouTube might fail n-challenge.")
+
+            # Check yt-dlp
+            print(f"✅ [2026] yt-dlp version: {yt_dlp.version.__version__}")
             
             # Check ffmpeg
             try:
-                import subprocess
                 ffmpeg_output = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().splitlines()[0]
-                print(f"✅ [2026 Environment] ffmpeg detected: {ffmpeg_output}")
+                print(f"✅ [2026] ffmpeg detected: {ffmpeg_output}")
             except Exception:
-                print(f"⚠️ [2026 Environment] ffmpeg NOT found! Conversions to MP3 will fail.")
+                print(f"⚠️ [2026] ffmpeg NOT found! Conversions to MP3 will fail.")
                 
+            # Check cookies
+            if os.path.exists(self.cookies_path):
+                print(f"🍪 YouTube cookie file found: {self.cookies_path}")
+            else:
+                if not self.youtube_api or not self.youtube_api.api_key:
+                    print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
+                else:
+                    print(f"✅ Using YouTube API instead of cookies")
+                    
         except Exception as e:
-            print(f"⚠️ [2026 Environment] Diagnostic warning: {e}")
-            print(f"ℹ️ YouTube downloads might fail without a JS runtime on some tracks.")
-
-    def _check_environment_legacy(self):
-        # We merge this into the main initialized log
-        pass
+            print(f"⚠️ Diagnostic error: {e}")
 
     def _sanitize_cookies(self, content: str) -> str:
         """Очистка и исправление формата кук Netscape"""
@@ -142,18 +154,13 @@ class DownloadService:
             
         return "\n".join(sanitized) + "\n"
 
-    def _check_environment(self):
-        print(f"🚀 DownloadService v14 (Diagnostic + ID Search) Loaded")
-        print(f"📂 Download directory: {self.download_dir}")
-        print(f"📍 Current Workdir: {os.getcwd()}")
-        if os.path.exists(self.cookies_path):
-            print(f"🍪 YouTube cookie file found: {self.cookies_path}")
-        else:
-            if not self.youtube_api or not self.youtube_api.api_key:
-                print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
-                print(f"   Set YOUTUBE_API_KEY or YOUTUBE_COOKIES_BASE64 environment variable")
-            else:
-                print(f"✅ Using YouTube API instead of cookies")
+    def _is_error_fatal(self, result):
+        """Check if result is a success or if we should skip fallback"""
+        if not result: return False
+        if not isinstance(result, dict): return True
+        if 'error' in result: return False
+        if not result.get('file_path') or not os.path.exists(result['file_path']): return False
+        return True # Success
         
     def _extract_youtube_id(self, error_msg: str) -> Optional[str]:
         """Извлечение YouTube ID из сообщения об ошибке"""
@@ -177,23 +184,31 @@ class DownloadService:
         import time
 
         # Handle Search Results / Playlist
-        entries = [info]
-        if 'entries' in info:
-            entries = [e for e in info['entries'] if e] # Filter None entries (from ignoreerrors=True)
+        if not info: return None, None
+        
+        entries = info.get('entries', [info])
+        entries = [e for e in entries if e] # Filter None entries (from ignoreerrors=True)
+
+        if not entries:
+            print("⚠️ No valid entries found in results.")
+            return None, info
 
         # Check each entry to see if its file exists
         for i, entry in enumerate(entries):
-            # 1. Predict 
-            base_path = ydl.prepare_filename(entry)
-            file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
+            # 1. Predict filename via yt-dlp logic
+            try:
+                base_path = ydl.prepare_filename(entry)
+                file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
+                
+                print(f"🔍 Entry {i} ({entry.get('id')}): Checking {file_path}")
+                
+                if os.path.exists(file_path):
+                    print(f"✅ Found file at: {file_path}")
+                    return file_path, entry
+            except Exception as e:
+                print(f"⚠️ Error preparing filename: {e}")
             
-            print(f"🔍 Checking entry {i} ({entry.get('id')}): {file_path}")
-            
-            if os.path.exists(file_path):
-                print(f"✅ Found file at: {file_path}")
-                return file_path, entry
-            
-            # 2. Check metadata
+            # 2. Check metadata fallback
             actual_filename = entry.get('_filename')
             if actual_filename:
                 potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
@@ -201,12 +216,12 @@ class DownloadService:
                     print(f"✅ Found file via metadata match: {potential_path}")
                     return potential_path, entry
 
-        print("⚠️ No direct match found in entries. Checking recent files (Universal Fallback v14)...")
+        print("⚠️ No direct match. Checking variants (Universal Fallback v15)...")
         # 3. Fallback: Search by ID (if ID is in filename)
-        for i, entry in enumerate(entries):
+        for entry in entries:
             vid_id = entry.get('id')
             if vid_id:
-                print(f"🔍 Searching by ID match: *{vid_id}*")
+                print(f"🔍 Look for ID: *{vid_id}*")
                 pattern = os.path.join(download_dir, f'*{vid_id}*.*')
                 id_files = [f for f in glob.glob(pattern) if not f.endswith('.part') and not f.endswith('.ytdl')]
                 if id_files:
@@ -214,25 +229,23 @@ class DownloadService:
                     print(f"✅ Found file via ID match: {best_id_file}")
                     return best_id_file, entry
 
-        # 4. Fallback: Recent file (Universal - ignores extension/name matches)
-        # Scan for ANY file type that might have been downloaded
-        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4', 'mkv']
+        # 4. Fallback: Recent file (Universal)
+        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4', 'mkv', 'mp3']
         recent_candidates = []
         
         now = time.time()
         for ext in possible_extensions:
             pattern = os.path.join(download_dir, f'*.{ext}')
-            files = glob.glob(pattern)
-            # Увеличиваем окно до 5 минут (300с)
-            recent_candidates.extend([f for f in files if now - os.path.getmtime(f) < 300])
+            for f in glob.glob(pattern):
+                # Window: 5 minutes (300s)
+                if now - os.path.getmtime(f) < 300:
+                    recent_candidates.append(f)
             
         if recent_candidates:
-            # Pick the most recent one
             best_candidate = max(recent_candidates, key=os.path.getmtime)
-            print(f"✅ Found file via Universal Fallback: {best_candidate}")
-            return best_candidate, entries[0] if entries else info
+            print(f"✅ Found file via Recent Fallback: {best_candidate}")
+            return best_candidate, entries[0]
             
-        print("❌ All search results failed or no file written to disk.")
         return None, info
 
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
@@ -310,61 +323,54 @@ class DownloadService:
         download_target = youtube_url if youtube_url else search_query
         loop = asyncio.get_event_loop()
         
-        try:
-            # Попытка 1: February 2026 Mobile Attempt
-            print(f"🚀 Download Attempt 1 (Stable Mobile 2026): {download_target}")
-            result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+        # v15: Unconditional Fallback Chain
+        strategies = [
+            # 1. Mobile (Standard)
+            {"player_client": ["android", "ios"]},
+            # 2. Music Web (Music specific)
+            {"player_client": ["web_music", "mweb", "android"]},
+            # 3. TV (Legacy / SABR fix)
+            {"player_client": ["tv", "web_embedded"]},
+            # 4. Nuclear (No Cookies)
+            {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+        ]
+        
+        last_result = None
+        for i, strategy in enumerate(strategies, 1):
+            current_opts = ydl_opts.copy()
+            current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
             
-            # Если ошибка формата или блокировка
-            if result and isinstance(result, dict) and 'error' in result:
-                err_msg = result['error']
-                failed_id = self._extract_youtube_id(err_msg)
-                is_unavailable = any(term in err_msg for term in ["format is not available", "bot", "Sign in", "403", "Video unavailable"])
-                
-                if is_unavailable:
-                    # Черный список: если ID сдох, принудительно исключаем его из поиска
-                    if failed_id:
-                        print(f"🚫 Blacklisting failing ID {failed_id} and retrying alternative search...")
-                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-                    
-                    if youtube_url or failed_id:
-                        youtube_url = None
-                        download_target = search_query 
-                        ydl_opts['default_search'] = 'ytsearch5' # Берем 5 вариантов
-                        ydl_opts['noplaylist'] = False # Разрешаем перебор плейлиста поиска
-                        ydl_opts['max_downloads'] = 1 # Качаем только 1 успешный трек
-                        ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
-                        # v12: Уникальные имена файлов для каждого кандидата в поиске
-                        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
-                        ydl_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
-                    
-                    # Попытка 2: Переход на Music Web (для клипов)
-                    print(f"⚠️ Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
-                    
-                    await asyncio.sleep(2)
-                    result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
-                    
-                    # Попытка 3: TV-клиенты (последний рубеж против SABR)
-                    if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 2 failed. Triggering Attempt 3 (TV Capture)...")
-                        ydl_opts['format'] = '*' 
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
-                        
-                        await asyncio.sleep(2)
-                        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
-                    
-                    # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
-                    if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
-                        ydl_opts['format'] = '*'
-                        ydl_opts['cookiefile'] = None
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
-                        
-                        await asyncio.sleep(2)
-                        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+            if strategy.get('no_cookies'):
+                current_opts['cookiefile'] = None
             
-            return result
+            # If we already failed once and have a failed_id, use ytsearch5 as fallback
+            if i > 1:
+                current_opts['default_search'] = 'ytsearch5'
+                current_opts['noplaylist'] = False
+                current_opts['max_downloads'] = 1
+                current_opts['ignoreerrors'] = True
+                safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
+                current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
+
+            print(f"📡 Step {i}/4: Trying strategy {strategy}")
+            last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
+            
+            if self._is_error_fatal(last_result):
+                print(f"✨ Strategy {i} SUCCEEDED!")
+                return last_result
+            
+            print(f"❌ Strategy {i} failed. Reason: {last_result.get('error') if isinstance(last_result, dict) else 'Unknown'}")
+            
+            # If we have a failed ID, blacklist it for next attempts
+            if isinstance(last_result, dict) and 'error' in last_result:
+                failed_id = self._extract_youtube_id(last_result['error'])
+                if failed_id:
+                    print(f"🚫 Blacklisting ID {failed_id} for next steps")
+                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
+            
+            await asyncio.sleep(1)
+
+        return last_result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
@@ -524,56 +530,44 @@ class DownloadService:
         
         loop = asyncio.get_event_loop()
         
-        try:
-            # Попытка 1: February 2026 Mobile Attempt
-            print(f"🚀 Query Download Attempt 1 (Stable Mobile 2026): {search_query}")
-            result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+        # v15: Unconditional Fallback Chain for Queries
+        strategies = [
+            {"player_client": ["android", "ios"]},
+            {"player_client": ["web_music", "mweb", "android"]},
+            {"player_client": ["tv", "web_embedded"]},
+            {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+        ]
+        
+        last_result = None
+        for i, strategy in enumerate(strategies, 1):
+            current_opts = ydl_opts.copy()
+            current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
             
-            # Если ошибка формата или блокировка
-            if result and isinstance(result, dict) and 'error' in result:
-                err_msg = result['error']
-                failed_id = self._extract_youtube_id(err_msg)
-                is_unavailable = any(term in err_msg for term in ["format is not available", "bot", "Sign in", "403", "Video unavailable"])
-
-                if is_unavailable:
-                    if failed_id:
-                        print(f"🚫 Blacklisting query ID {failed_id} and retrying alternative search...")
-                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-                        ydl_opts['default_search'] = 'ytsearch5'
-                        ydl_opts['noplaylist'] = False
-                        ydl_opts['max_downloads'] = 1
-                        ydl_opts['ignoreerrors'] = True # v10: Игнорируем ошибки (Sign in) для пропуска битых треков в поиске
-                        # v12: Уникальные имена файлов для каждого кандидата в поиске
-                        # v13: Truncate safe_query
-                        ydl_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
-
-                    # Попытка 2: Переход на Music Web (для клипов)
-                    print(f"⚠️ Query Attempt 1 failed. Triggering Attempt 2 (Music Web Mode + Blacklist)...")
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb', 'android']
-                    
-                    await asyncio.sleep(2)
-                    result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
-                    
-                    # Попытка 3: TV-клиенты (последний рубеж против SABR)
-                    if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 2 failed. Triggering Attempt 3 (TV Capture)...")
-                        ydl_opts['format'] = '*' 
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
-                        
-                        await asyncio.sleep(2)
-                        result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
-                    
-                    # Попытка 4 (Nuclear): Гостевой режим БЕЗ КУКОВ
-                    if result and isinstance(result, dict) and 'error' in result:
-                        print(f"⚠️ Query Attempt 3 failed. NUCLEAR ATTEMPT 4 (Guest Mode - No Cookies)...")
-                        ydl_opts['format'] = '*'
-                        ydl_opts['cookiefile'] = None
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'mweb']
-                        
-                        await asyncio.sleep(2)
-                        result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+            if strategy.get('no_cookies'):
+                current_opts['cookiefile'] = None
             
-            return result
+            if i > 1:
+                current_opts['default_search'] = 'ytsearch5'
+                current_opts['noplaylist'] = False
+                current_opts['max_downloads'] = 1
+                current_opts['ignoreerrors'] = True
+                current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
+
+            print(f"📡 Query Step {i}/4: Trying strategy {strategy}")
+            last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
+            
+            if self._is_error_fatal(last_result):
+                print(f"✨ Query Strategy {i} SUCCEEDED!")
+                return last_result
+            
+            if isinstance(last_result, dict) and 'error' in last_result:
+                failed_id = self._extract_youtube_id(last_result['error'])
+                if failed_id:
+                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
+            
+            await asyncio.sleep(1)
+
+        return last_result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
