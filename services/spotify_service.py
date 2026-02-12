@@ -301,9 +301,34 @@ class SpotifyService:
                     
                     entity_name = entity.get('name') or entity.get('title') or "Unknown"
                     entity_image = ""
-                    images = entity.get('visuals', {}).get('avatar', []) or entity.get('coverArt', {}).get('sources', [])
-                    if images: entity_image = images[0].get('url')
                     
+                    # 1. Пробуем разные пути для картинки коллекции
+                    # Для артистов: visualIdentity.image
+                    viz = entity.get('visualIdentity', {})
+                    if isinstance(viz, dict) and 'image' in viz:
+                        img_data = viz['image']
+                        if isinstance(img_data, list) and len(img_data) > 0:
+                            entity_image = img_data[0].get('url') or ""
+                        elif isinstance(img_data, dict):
+                            entity_image = img_data.get('url') or ""
+                    
+                    # Если не нашли, пробуем visuals (старый формат или другой тип)
+                    if not entity_image:
+                        visuals = entity.get('visuals', {})
+                        avatar = visuals.get('avatar') or visuals.get('avatarImage')
+                        if isinstance(avatar, dict):
+                            sources = avatar.get('sources', [])
+                            if sources: entity_image = sources[0].get('url')
+                        elif isinstance(avatar, list) and len(avatar) > 0:
+                            entity_image = avatar[0].get('url')
+                    
+                    # Для альбомов/плейлистов: coverArt
+                    if not entity_image:
+                        cover = entity.get('coverArt', {})
+                        sources = cover.get('sources', [])
+                        if sources: entity_image = sources[0].get('url')
+                    
+                    # 2. Извлекаем треки
                     tracks = []
                     # Для артиста треки в tracks, для альбома в trackList или tracks
                     track_list = entity.get('tracks', {}).get('items', []) or entity.get('trackList', [])
