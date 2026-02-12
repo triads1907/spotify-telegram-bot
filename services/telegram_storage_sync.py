@@ -15,10 +15,11 @@ from database.db_manager import DatabaseManager
 class DeepSyncService:
     """Сервис для глубокой синхронизации треков из Telegram Channel"""
     
-    def __init__(self, storage_service, db_manager, download_service=None):
+    def __init__(self, storage_service, db_manager, download_service=None, spotify_service=None):
         self.storage = storage_service
         self.db = db_manager
         self.downloader = download_service
+        self.spotify = spotify_service
         self.base_url = storage_service.base_url
         self.channel_id = storage_service.channel_id
         
@@ -116,7 +117,25 @@ class DeepSyncService:
                         track_id = audio.get('file_unique_id', f"sync_{msg_id}")
                         
                         image_url = None
-                        if self.downloader:
+                        
+                        # ПРИОРИТЕТ 1: Spotify Metadata (Надежно и качественно)
+                        if self.spotify:
+                            try:
+                                # Ищем трек в Spotify
+                                search_query = f"{artist} {title}"
+                                results = await self.spotify.search_track(search_query)
+                                if results and len(results) > 0:
+                                    best_match = results[0]
+                                    image_url = best_match.get('image_url')
+                                    # ОПЦИОНАЛЬНО: Можно обновить track_id на реальный Spotify ID
+                                    # Но это может нарушить связь с существующими файлами, если логика жесткая.
+                                    # DatabaseManager.save_telegram_file уже умеет линковать по имени!
+                                    print(f"🎨 [SYNC] Found cover art for {artist} - {title}", flush=True)
+                            except Exception as e:
+                                print(f"⚠️ [SYNC] Spotify metadata fetch failed: {e}", flush=True)
+
+                        # ПРИОРИТЕТ 2: YouTube Metadata (Через DownloadService) - Устарело, ненадежно
+                        if not image_url and self.downloader:
                             metadata = await self.downloader.get_metadata_only(artist, title)
                             if metadata:
                                 image_url = metadata.get('thumbnail')

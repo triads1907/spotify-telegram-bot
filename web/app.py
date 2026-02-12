@@ -66,7 +66,7 @@ def run_background_sync():
         asyncio.set_event_loop(loop)
         
         from services.telegram_storage_sync import DeepSyncService
-        sync_service = DeepSyncService(get_telegram_storage(), db, download_service)
+        sync_service = DeepSyncService(get_telegram_storage(), db, download_service, spotify_service)
         
         # Запускаем синхронизацию
         print(f"🛰️  [BACKGROUND] Triggering deep scan with 5000 messages...", flush=True)
@@ -140,7 +140,7 @@ def sync_deep():
         asyncio.set_event_loop(loop)
         
         storage = get_telegram_storage()
-        sync_service = DeepSyncService(storage, db, download_service)
+        sync_service = DeepSyncService(storage, db, download_service, spotify_service)
         
         # Получаем параметры из запроса
         data = request.json or {}

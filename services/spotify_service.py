@@ -132,14 +132,87 @@ class SpotifyService:
         """Алиас для веб-приложения"""
         return await self.search_tracks(query)
 
-    async def search_tracks(self, query: str) -> list:
+    async def _get_anonymous_token(self) -> Optional[str]:
+        """Получить анонимный токен через Embed страницу"""
+        try:
+            # Используем популярный трек для получения токена
+            embed_url = "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT" 
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            }
+            
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+                response = await client.get(embed_url, timeout=10.0)
+                if response.status_code != 200:
+                    return None
+                    
+                soup = BeautifulSoup(response.text, 'html.parser')
+                script_tag = soup.find('script', {'id': '__NEXT_DATA__', 'type': 'application/json'})
+                
+                if script_tag:
+                    data = json.loads(script_tag.string)
+                    token = data.get('props', {}).get('pageProps', {}).get('state', {}).get('settings', {}).get('session', {}).get('accessToken')
+                    return token
+        except Exception as e:
+            print(f"⚠️ Error getting anonymous token: {e}")
+        return None
+
+    async def search_tracks(self, query: str, limit: int = 10) -> list:
         """
-        Поиск треков (недоступен без API)
-        Для работы веб-интерфейса возвращаем пустой список, 
-        так как поиск по тексту без API в Spotify затруднен.
+        Поиск треков через Web API с анонимным токеном
         """
-        print(f"⚠️ Поиск без Spotify API недоступен: {query}")
-        return []
+        token = await self._get_anonymous_token()
+        if not token:
+            print(f"⚠️ Поиск недоступен: не удалось получить токен")
+            return []
+            
+        try:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            }
+            
+            async with httpx.AsyncClient(headers=headers) as client:
+                # API поиск
+                api_url = f"https://api.spotify.com/v1/search"
+                params = {
+                    'q': query,
+                    'type': 'track',
+                    'limit': limit
+                }
+                
+                response = await client.get(api_url, params=params, timeout=10.0)
+                if response.status_code != 200:
+                    print(f"⚠️ Search API Error: {response.status_code} {response.text}")
+                    return []
+                
+                data = response.json()
+                items = data.get('tracks', {}).get('items', [])
+                
+                results = []
+                for t in items:
+                    # Извлекаем картинку
+                    image_url = ""
+                    images = t.get('album', {}).get('images', [])
+                    if images:
+                        image_url = images[0].get('url')
+                        
+                    results.append({
+                        'id': t.get('id'),
+                        'name': t.get('name'),
+                        'artist': ", ".join([a.get('name', '') for a in t.get('artists', [])]),
+                        'album': t.get('album', {}).get('name'),
+                        'duration_ms': t.get('duration_ms'),
+                        'image_url': image_url,
+                        'preview_url': t.get('preview_url'),
+                        'spotify_url': t.get('external_urls', {}).get('spotify')
+                    })
+                
+                return results
+                
+        except Exception as e:
+            print(f"❌ Search error: {e}")
+            return []
     
     def is_playlist_url(self, url: str) -> bool:
         """
