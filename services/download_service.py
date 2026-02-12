@@ -164,6 +164,8 @@ class DownloadService:
         
     def _extract_youtube_id(self, error_msg: str) -> Optional[str]:
         """Извлечение YouTube ID из сообщения об ошибке"""
+        if not error_msg or not isinstance(error_msg, str):
+            return None
         import re
         match = re.search(r'\[youtube\] ([a-zA-Z0-9_-]{11}):', error_msg)
         if match:
@@ -356,6 +358,11 @@ class DownloadService:
                     safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
                     current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
+                # v17: Broaden format if audio-only fails (TV & Nuclear steps)
+                if i >= 3:
+                    print(f"☢️ Step {i}: Enabling broad format fallback ('*')")
+                    current_opts['format'] = '*'
+
                 print(f"📡 Strategy {i}/4: Trying {strategy}")
                 last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
                 
@@ -363,8 +370,10 @@ class DownloadService:
                     print(f"✨ Step {i} SUCCEEDED!")
                     return last_result
                 
-                # Extract error string
+                # Extract error string safely (v17 crash fix)
                 err_str = last_result.get('error') if isinstance(last_result, dict) else str(last_result)
+                if not err_str or err_str == 'None': err_str = "Unknown download failure"
+                
                 print(f"❌ Step {i} failed. Reason: {err_str}")
                 
                 # If we have a failed ID, blacklist it for next attempts
@@ -558,6 +567,10 @@ class DownloadService:
                     current_opts['ignoreerrors'] = True
                     current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
+                # v17: Broaden format for query fallback too
+                if i >= 3:
+                    current_opts['format'] = '*'
+
                 print(f"📡 Query Step {i}/4: Trying strategy {strategy}")
                 last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
                 
@@ -565,8 +578,12 @@ class DownloadService:
                     print(f"✨ Query Strategy {i} SUCCEEDED!")
                     return last_result
                 
+                # Safe error extraction
+                err_str = last_result.get('error') if isinstance(last_result, dict) else str(last_result)
+                if not err_str or err_str == 'None': err_str = "Unknown query failure"
+                
                 if isinstance(last_result, dict) and 'error' in last_result:
-                    failed_id = self._extract_youtube_id(last_result['error'])
+                    failed_id = self._extract_youtube_id(err_str)
                     if failed_id:
                         ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
                 
