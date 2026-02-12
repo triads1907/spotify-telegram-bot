@@ -219,9 +219,9 @@ class DownloadService:
                     "this video is not available"
                 ])
 
-            # Попытка 1: Нативные мобильные клиенты (самые надежные)
-            print(f"🚀 Attempt 1: Using Native Mobile clients (ios, android)...")
-            ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
+            # Попытка 1: Музыкальные и мобильный веб (самые сбалансированные для музыки)
+            print(f"🚀 Attempt 1: Using Music & MWeb (Standard for audio)...")
+            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
             result = await loop.run_in_executor(
                 None, 
                 self._download_sync, 
@@ -231,9 +231,14 @@ class DownloadService:
             )
 
             if is_blocked(result):
-                # Попытка 2: Музыкальные и мобильный веб
-                print(f"⚠️ Attempt 1 failed ({result.get('error')[:50] if result else 'N/A'}). Trying Attempt 2: Music & MWeb...")
-                ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
+                # Попытка 2: Нативные мобильные (часто помогают при блоках, НО плохо дружат с куками в yt-dlp)
+                # Поэтому пробуем их БЕЗ куков если с куками не вышло
+                print(f"⚠️ Attempt 1 failed ({result.get('error')[:50] if result else 'N/A'}). Trying Attempt 2: Native Mobile (No Cookies)...")
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
+                
+                # Сохраняем и временно убираем куки для этой попытки
+                original_cookiefile = ydl_opts.get('cookiefile')
+                ydl_opts['cookiefile'] = None
                 
                 result = await loop.run_in_executor(
                     None, 
@@ -243,8 +248,11 @@ class DownloadService:
                     file_format
                 )
                 
+                # Возвращаем куки назад для следующих попыток
+                ydl_opts['cookiefile'] = original_cookiefile
+                
                 if is_blocked(result):
-                    # Попытка 3: Встроенные плееры (web_embedded) - исключаем tv из-за INNERTUBE_CONTEXT
+                    # Попытка 3: Встроенные плееры (web_embedded)
                     print(f"⚠️ Attempt 2 failed. Trying Attempt 3: Embedded only...")
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded']
                     
