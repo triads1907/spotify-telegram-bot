@@ -330,11 +330,11 @@ class DownloadService:
                 # 1. Mobile (Standard)
                 {"player_client": ["android", "ios"]},
                 # 2. Music Web (Music specific)
-                {"player_client": ["web_music", "mweb", "android"]},
+                {"player_client": ["web_music", "web", "mweb", "android"]},
                 # 3. TV (Legacy / SABR fix)
-                {"player_client": ["tv", "web_embedded"]},
+                {"player_client": ["tv", "web_embedded", "web"]},
                 # 4. Nuclear (No Cookies)
-                {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+                {"player_client": ["web_embedded", "web", "mweb"], "no_cookies": True}
             ]
             
             last_result = None
@@ -358,10 +358,12 @@ class DownloadService:
                     safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
                     current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
-                # v17: Broaden format if audio-only fails (TV & Nuclear steps)
+                # v18: Broaden format if audio-only fails (TV & Nuclear steps)
                 if i >= 3:
-                    print(f"☢️ Step {i}: Enabling broad format fallback ('*')")
-                    current_opts['format'] = '*'
+                    print(f"☢️ Step {i}: Enabling ultra-broad format fallback ('best')")
+                    current_opts['format'] = 'best'
+                    current_opts['format_sort'] = [] # Clear sort to prevent filtering
+                    current_opts['ignore_no_formats_error'] = True
 
                 print(f"📡 Strategy {i}/4: Trying {strategy}")
                 last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
@@ -544,12 +546,12 @@ class DownloadService:
         
         loop = asyncio.get_event_loop()
         try:
-            # v15: Unconditional Fallback Chain for Queries
+            # v18: Unconditional Fallback Chain for Queries
             strategies = [
                 {"player_client": ["android", "ios"]},
-                {"player_client": ["web_music", "mweb", "android"]},
-                {"player_client": ["tv", "web_embedded"]},
-                {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+                {"player_client": ["web_music", "web", "mweb", "android"]},
+                {"player_client": ["tv", "web_embedded", "web"]},
+                {"player_client": ["web_embedded", "web", "mweb"], "no_cookies": True}
             ]
             
             last_result = None
@@ -567,11 +569,13 @@ class DownloadService:
                     current_opts['ignoreerrors'] = True
                     current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
-                # v17: Broaden format for query fallback too
+                # v18: Broaden format for query fallback too
                 if i >= 3:
-                    current_opts['format'] = '*'
+                    current_opts['format'] = 'best'
+                    current_opts['format_sort'] = []
+                    current_opts['ignore_no_formats_error'] = True
 
-                print(f"📡 Query Step {i}/4: Trying strategy {strategy}")
+                print(f"📡 Query Strategy {i}/4: Trying strategy {strategy}")
                 last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
                 
                 if self._is_error_fatal(last_result):
