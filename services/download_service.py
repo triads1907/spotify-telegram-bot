@@ -37,17 +37,22 @@ class DownloadService:
                 print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
-                # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
-                is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
+                # Диагностика и очистка: проверим формат и удалим "битые" символы
+                # Удаляем все непечатаемые символы, кроме табов и переносов строк
+                sanitized_content = "".join([c for c in cookies_content if c == '\t' or c == '\n' or c == '\r' or (ord(c) >= 32 and ord(c) < 127)])
                 
-                if len(cookies_content) > 10:
-                    preview = cookies_content[:30].replace('\n', ' ')
+                is_netscape = sanitized_content.startswith('# Netscape') or '# HTTP' in sanitized_content[:50]
+                
+                if len(sanitized_content) > 10:
+                    preview = sanitized_content[:30].replace('\n', ' ')
                     print(f"📊 Decoded cookie content preview: {preview}...")
-                    print(f"📏 Decoded size: {len(cookies_content)} bytes")
+                    print(f"📏 Decoded size: {len(sanitized_content)} bytes")
                     if not is_netscape:
                         print(f"⚠️ WARNING: Cookies do NOT look like Netscape format! Download might fail.")
                     else:
                         print(f"✅ Cookie format looks valid (Netscape)")
+                
+                cookies_content = sanitized_content
                 
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
@@ -121,23 +126,23 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    # Используем mweb в приоритете и web_music как наиболее стабильный для аудио
-                    'player_client': ['mweb', 'web_music', 'web', 'ios', 'android'],
+                    # Используем мобильные клиенты в приоритете, так как они стабильнее на серверах
+                    'player_client': ['ios', 'android', 'mweb', 'web_music'],
                     'skip': ['translated_subs'],
-                    # Используем mweb для автоматического извлечения PO-токена
-                    'po_token': 'mweb',
+                    # Убираем жесткую привязку po_token к mweb, так как это может вызывать 400 Bad Request
+                    # yt-dlp сам выберет оптимальный токен для выбранного клиента
                 }
             },
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Sec-Fetch-Mode': 'navigate',
             },
             'referer': 'https://www.google.com/',
             'noproxy': True,
-            'socket_timeout': 30,
-            'retries': 5,
+            'socket_timeout': 60,  # Увеличиваем таймаут
+            'retries': 10,         # Больше попыток
             'geo_bypass': True,
             'nocheckcertificate': True,
             'age_limit': 99,  # Обход возрастных ограничений
