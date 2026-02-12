@@ -60,13 +60,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data.startswith("track_in_playlist_"):
         await show_track_in_playlist(query, context, callback_data, lang)
     
-    # Создание плейлиста
+    # Создание плейлиста (Теперь обрабатывается отдельным Handler в bot.py)
     elif callback_data == "create_playlist":
-        await query.message.reply_text(
-            get_string("playlist_creation_title", lang) + "\n\n" + \
-            get_string("playlist_creation_info", lang),
-            parse_mode='HTML'
-        )
+        pass
     
     # Отмена
     elif callback_data == "cancel":

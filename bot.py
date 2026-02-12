@@ -165,6 +165,7 @@ def main():
     create_playlist_conv = ConversationHandler(
         entry_points=[
             CommandHandler("createplaylist", create_playlist_command),
+            CallbackQueryHandler(create_playlist_command, pattern=r'^create_playlist$'),
             CallbackQueryHandler(create_playlist_for_track_callback, pattern=r'^plnew_')
         ],
         states={
@@ -221,7 +222,6 @@ def main():
     # Callback'и для плейлистов (Добавление треков)
     application.add_handler(CallbackQueryHandler(add_to_playlist_callback, pattern=r'^addto_'))
     application.add_handler(CallbackQueryHandler(select_playlist_callback, pattern=r'^pladd_'))
-    application.add_handler(CallbackQueryHandler(create_playlist_for_track_callback, pattern=r'^plnew_'))
     application.add_handler(CallbackQueryHandler(cancel_playlist_selection_callback, pattern=r'^plcancel_'))
     
     # Общий обработчик callback'ов (для остальных)

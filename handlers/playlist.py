@@ -56,7 +56,12 @@ async def my_playlists_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def create_playlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало создания плейлиста"""
-    await update.message.reply_text(
+    message_obj = update.message or update.callback_query.message
+    
+    if update.callback_query:
+        await update.callback_query.answer()
+    
+    await message_obj.reply_text(
         "📋 <b>Создание нового плейлиста</b>\n\n"
         "Введите название плейлиста (до 100 символов):\n\n"
         "Или отправьте /cancel для отмены",
