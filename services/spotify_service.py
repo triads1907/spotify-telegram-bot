@@ -354,8 +354,22 @@ class SpotifyService:
                             'id': t_id or f"idx_{idx}",
                             'name': t_name,
                             'artist': t_artist.replace('\u00a0', ' '),
-                            'image': entity_image
+                            'image': entity_image # Default to artist image initially
                         })
+
+                    # SPECIFIC FIX FOR ARTIST TRACKS:
+                    # Artist "Top Tracks" in static data do NOT contain album art.
+                    # We must fetch it individually from track embeds.
+                    if collection_type == 'artist' and tracks:
+                        print(f"🎨 Fetching missing album art for {len(tracks)} tracks concurrently...")
+                        async def update_track_image(track):
+                            if track['id'] and not track['id'].startswith('idx_'):
+                                img = await self._get_track_image_from_embed(track['id'])
+                                if img:
+                                    track['image'] = img
+
+                        # Run concurrent requests
+                        await asyncio.gather(*[update_track_image(t) for t in tracks])
 
                 return {
                     'id': entity_id,
@@ -369,4 +383,46 @@ class SpotifyService:
             print(f"❌ Error fetching {collection_type}: {e}")
             import traceback
             traceback.print_exc()
+            return None
+
+    async def _get_track_image_from_embed(self, track_id: str) -> Optional[str]:
+        """
+        Helper to fetch album art from single track embed.
+        Needed because Artist page static data lacks individual track images.
+        """
+        try:
+            url = f"https://open.spotify.com/embed/track/{track_id}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            }
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+                resp = await client.get(url, timeout=5.0)
+                if resp.status_code != 200: return None
+                
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                script = soup.find('script', {'id': '__NEXT_DATA__'})
+                if not script: return None
+                
+                data = json.loads(script.string)
+                entity = data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+                
+                # Priority: visualIdentity (new) -> coverArt -> album.images -> visuals
+                if 'visualIdentity' in entity:
+                    viz = entity['visualIdentity']
+                    if 'image' in viz:
+                        imgs = viz['image']
+                        if isinstance(imgs, list) and imgs: return imgs[0].get('url')
+                        elif isinstance(imgs, dict): return imgs.get('url')
+
+                if 'coverArt' in entity:
+                    srcs = entity['coverArt'].get('sources', [])
+                    if srcs: return srcs[0].get('url')
+                
+                if 'album' in entity:
+                    imgs = entity['album'].get('images', [])
+                    if imgs: return imgs[0].get('url')
+
+                return None
+        except Exception as e:
+            # Silent fail for individual image
             return None
