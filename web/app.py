@@ -599,6 +599,22 @@ def handle_playlists():
             playlist = loop.run_until_complete(db.create_playlist(user_id, name, description))
             loop.close()
             
+            # Trigger immediate backup
+            try:
+                backup_service = get_backup_service()
+                # Run sync in separate thread/loop or just wait? 
+                # Since this is a simple Flask app without Celery/Redis, we can run it synchronously 
+                # or create a new loop just for this.
+                # However, backup_to_telegram is async.
+                
+                # Re-using a new loop for backup
+                backup_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(backup_loop)
+                backup_loop.run_until_complete(backup_service.backup_to_telegram())
+                backup_loop.close()
+            except Exception as e:
+                print(f"⚠️ Backup trigger failed: {e}")
+
             return jsonify({
                 'id': playlist.id,
                 'name': playlist.name,
@@ -650,6 +666,16 @@ def add_track_to_playlist():
         loop.close()
         
         if success:
+            # Trigger immediate backup
+            try:
+                backup_service = get_backup_service()
+                backup_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(backup_loop)
+                backup_loop.run_until_complete(backup_service.backup_to_telegram())
+                backup_loop.close()
+            except Exception as e:
+                print(f"⚠️ Backup trigger failed: {e}")
+
             return jsonify({'success': True})
         else:
             return jsonify({'error': 'Track already in playlist'}), 400

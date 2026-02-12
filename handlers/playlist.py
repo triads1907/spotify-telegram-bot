@@ -134,6 +134,11 @@ async def receive_playlist_description(update: Update, context: ContextTypes.DEF
         # Очищаем контекст
         context.user_data.pop('new_playlist_name', None)
         
+        # Trigger immediate backup (Write-Through)
+        backup_service = context.bot_data.get('backup_service')
+        if backup_service:
+            context.application.create_task(backup_service.backup_to_telegram())
+        
         return ConversationHandler.END
     
     except Exception as e:

@@ -25,6 +25,7 @@ class DatabaseBackupService:
         self.backup_file_id = None
         self.is_running = False
         self.backup_message_ids = []  # Список message_id созданных в сессии
+        self.last_backup_time = datetime.min # Для троттлинга
         
         print(f"📦 Database Backup Service initialized for: {db_path}")
     
@@ -85,14 +86,24 @@ class DatabaseBackupService:
             traceback.print_exc()
             return False
     
-    async def backup_to_telegram(self) -> bool:
+    async def backup_to_telegram(self, force: bool = False) -> bool:
         """
         Создать backup БД в Telegram
+        
+        Args:
+            force: Игнорировать троттлинг (например, при выключении)
         
         Returns:
             True если backup успешно создан
         """
         try:
+            # Троттлинг: не чаще чем раз в 15 секунд (если не force)
+            if not force:
+                elapsed = (datetime.now() - self.last_backup_time).total_seconds()
+                if elapsed < 15:
+                    print(f"⏳ Backup skipped (throttling: last backup {elapsed:.1f}s ago)")
+                    return False
+
             if not os.path.exists(self.db_path):
                 print(f"⚠️  Database file not found: {self.db_path}")
                 return False
@@ -117,8 +128,6 @@ class DatabaseBackupService:
                         print(f"📌 Backup message pinned: {result['message_id']}")
                         
                         # Удаляем сервисное сообщение "Сообщение закреплено" (оно обычно идет следующим за закрепом)
-                        # Мы пытаемся удалить message_id + 1, что обычно и является системным уведомлением
-                        # Это убирает визуальный шум в канале
                         service_msg_id = result['message_id'] + 1
                         self.storage.delete_message(service_msg_id)
                     
@@ -131,6 +140,9 @@ class DatabaseBackupService:
                 
                 # Автоматическая очистка старых бэкапов (БЕЗОПАСНО - удаляет только отслеживаемые message_id)
                 await self.cleanup_old_backups(keep_count=2)
+                
+                # Обновляем время последнего бэкапа
+                self.last_backup_time = datetime.now()
                 
                 return True
             else:

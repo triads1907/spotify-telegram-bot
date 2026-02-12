@@ -87,6 +87,7 @@ async def post_init(application: Application) -> None:
         application.bot_data['download_service'] = download_service
         
         # 4. Запускаем периодический backup
+        application.bot_data['backup_service'] = backup_service
         asyncio.create_task(backup_service.start_periodic_backup(interval=300))
         print("✅ Periodic database backup started (every 5 minutes)")
         
@@ -112,6 +113,13 @@ logger = logging.getLogger(__name__)
 
 async def post_shutdown(application: Application):
     """Очистка при остановке бота"""
+    # 1. Делаем финальный бэкап
+    backup_service = application.bot_data.get('backup_service')
+    if backup_service:
+        print("🛑 Shutting down... Creating final database backup...", flush=True)
+        await backup_service.backup_to_telegram()
+
+    # 2. Закрываем соединение с БД
     db = application.bot_data.get('db')
     if db:
         await db.close()
