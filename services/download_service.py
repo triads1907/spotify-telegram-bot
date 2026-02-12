@@ -196,18 +196,7 @@ class DownloadService:
         try:
             loop = asyncio.get_event_loop()
             
-            # Попытка 1: Широкий набор клиентов (Web Music, iOS, Android)
-            print(f"🚀 Attempt 1: Using mixed clients (web_music, ios, android, mweb)...")
-            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'ios', 'android', 'mweb']
-            result = await loop.run_in_executor(
-                None, 
-                self._download_sync, 
-                download_target,
-                ydl_opts,
-                file_format
-            )
-            
-            # Проверка на блокировку
+            # Проверка на блокировку или технические ошибки
             def is_blocked(res):
                 if not res or not isinstance(res, dict) or 'error' not in res:
                     return False
@@ -219,13 +208,27 @@ class DownloadService:
                     "page needs to be reloaded",
                     "forbidden",
                     "failed to extract any player response",
-                    "failed to extract player response"
+                    "failed to extract player response",
+                    "innertube_context",
+                    "extractor error",
+                    "unsupported url"
                 ])
 
+            # Попытка 1: Нативные мобильные клиенты (самые надежные)
+            print(f"🚀 Attempt 1: Using Native Mobile clients (ios, android)...")
+            ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
+            result = await loop.run_in_executor(
+                None, 
+                self._download_sync, 
+                download_target,
+                ydl_opts,
+                file_format
+            )
+
             if is_blocked(result):
-                # Попытка 2: Только мобильные нативные (иногда помогают при ошибках плеера)
-                print(f"⚠️ Attempt 1 blocked/failed. Trying Attempt 2: Native Mobile only (ios, android)...")
-                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
+                # Попытка 2: Музыкальные и мобильный веб
+                print(f"⚠️ Attempt 1 failed ({result.get('error')[:50] if result else 'N/A'}). Trying Attempt 2: Music & MWeb...")
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
                 
                 result = await loop.run_in_executor(
                     None, 
@@ -236,9 +239,9 @@ class DownloadService:
                 )
                 
                 if is_blocked(result):
-                    # Попытка 3: TV и встроенные плееры (максимальная выносливость)
-                    print(f"⚠️ Attempt 2 blocked/failed. Trying Attempt 3: TV & Embedded (tv, web_embedded)...")
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
+                    # Попытка 3: Встроенные плееры (web_embedded) - исключаем tv из-за INNERTUBE_CONTEXT
+                    print(f"⚠️ Attempt 2 failed. Trying Attempt 3: Embedded only...")
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded']
                     
                     result = await loop.run_in_executor(
                         None, 
@@ -247,6 +250,21 @@ class DownloadService:
                         ydl_opts,
                         file_format
                     )
+                    
+                    if is_blocked(result):
+                        # Попытка 4: Стандартный веб (крайний случай)
+                        print(f"⚠️ Attempt 3 failed. Trying Attempt 4: Standard Web...")
+                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
+                        
+                        result = await loop.run_in_executor(
+                            None, 
+                            self._download_sync, 
+                            download_target,
+                            ydl_opts,
+                            file_format
+                        )
+            
+            return result
             
             return result
             
