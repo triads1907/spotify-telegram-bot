@@ -269,7 +269,20 @@ class DownloadService:
                             file_format
                         )
             
-            return result
+            # --- ФИНАЛЬНЫЙ FALLBACK: Поиск альтернатив если конкретный URL не сработал ---
+            if is_blocked(result) and youtube_url:
+                print(f"🔄 Specific URL failed all attempts. Falling back to YouTube Search for alternatives...")
+                ydl_opts['default_search'] = 'ytsearch1'
+                # Сбрасываем клиентов на оптимальный набор для поиска
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'web_music']
+                
+                result = await loop.run_in_executor(
+                    None, 
+                    self._download_sync, 
+                    search_query, # Используем текстовый поиск вместо URL
+                    ydl_opts,
+                    file_format
+                )
             
             return result
             
