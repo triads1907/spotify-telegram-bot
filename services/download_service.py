@@ -38,9 +38,32 @@ class DownloadService:
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
                 # Диагностика и очистка: проверим формат и удалим "битые" символы
-                # Удаляем все непечатаемые символы, кроме табов и переносов строк
-                sanitized_content = "".join([c for c in cookies_content if c == '\t' or c == '\n' or c == '\r' or (ord(c) >= 32 and ord(c) < 127)])
+                # Вместо простого удаления, заменяем нечитаемые символы на табы, 
+                # чтобы не склеивать поля кук.
+                sanitized_lines = []
+                for line in cookies_content.splitlines():
+                    if not line.strip():
+                        continue
+                    
+                    # Заменяем подозрительные символы на табы
+                    clean_line = "".join([c if (c == '\t' or (ord(c) >= 32 and ord(c) < 127)) else '\t' for c in line])
+                    
+                    # Убеждаемся, что в строке Netscape (начинается с .) ровно 7 полей
+                    if clean_line.startswith('.'):
+                        parts = [p for p in clean_line.split('\t') if p.strip()]
+                        if len(parts) > 7:
+                            # Если полей слишком много (из-за лишних табов), склеиваем последние в значение
+                            new_line = "\t".join(parts[:6]) + "\t" + "".join(parts[6:])
+                            sanitized_lines.append(new_line)
+                        elif len(parts) == 7:
+                            sanitized_lines.append("\t".join(parts))
+                        else:
+                            # Если полей мало, значит что-то склеилось. Пытаемся сохранить как есть
+                            sanitized_lines.append(clean_line)
+                    else:
+                        sanitized_lines.append(clean_line)
                 
+                sanitized_content = "\n".join(sanitized_lines)
                 is_netscape = sanitized_content.startswith('# Netscape') or '# HTTP' in sanitized_content[:50]
                 
                 if len(sanitized_content) > 10:
