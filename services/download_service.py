@@ -37,29 +37,45 @@ class DownloadService:
                 print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
                 cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
-                # Диагностика и очистка: проверим формат и удалим "битые" символы
-                # Вместо простого удаления, заменяем нечитаемые символы на табы, 
-                # чтобы не склеивать поля кук.
+                # Список известных ключей YouTube для "умного" разделения
+                yt_keys = [
+                    '__Secure-1PSIDTS', '__Secure-3PSIDTS', '__Secure-1PSIDCC', '__Secure-3PSIDCC',
+                    '__Secure-1PSID', '__Secure-3PSID', '__Secure-1PAPISID', '__Secure-3PAPISID',
+                    'HSID', 'SSID', 'APISID', 'SAPISID', 'SID', 'LOGIN_INFO', 'SIDCC', 'YSC', 
+                    'VISITOR_INFO1_LIVE', 'PREF', 'GPS'
+                ]
+
                 sanitized_lines = []
                 for line in cookies_content.splitlines():
                     if not line.strip():
                         continue
                     
-                    # Заменяем подозрительные символы на табы
+                    # Заменяем подозрительные символы на табы (включая непечатаемые)
                     clean_line = "".join([c if (c == '\t' or (ord(c) >= 32 and ord(c) < 127)) else '\t' for c in line])
                     
-                    # Убеждаемся, что в строке Netscape (начинается с .) ровно 7 полей
                     if clean_line.startswith('.'):
-                        parts = [p for p in clean_line.split('\t') if p.strip()]
-                        if len(parts) > 7:
-                            # Если полей слишком много (из-за лишних табов), склеиваем последние в значение
-                            new_line = "\t".join(parts[:6]) + "\t" + "".join(parts[6:])
-                            sanitized_lines.append(new_line)
-                        elif len(parts) == 7:
-                            sanitized_lines.append("\t".join(parts))
+                        # Сначала убираем лишние табы (схлапываем в один)
+                        parts = [p.strip() for p in clean_line.split('\t') if p.strip()]
+                        
+                        # Если полей ровно 6, значит Ключ и Значение склеились в 6-м поле
+                        if len(parts) == 6:
+                            last_field = parts[5]
+                            split_done = False
+                            for key in yt_keys:
+                                if last_field.startswith(key) and len(last_field) > len(key):
+                                    # Нашли ключ в начале поля - разделяем его и значение
+                                    value = last_field[len(key):]
+                                    parts = parts[:5] + [key, value]
+                                    split_done = True
+                                    print(f"🔧 Smart Split: separated {key}")
+                                    break
+                            
+                        # Сборка итоговой строки
+                        if len(parts) >= 7:
+                            # Ограничиваемся 7 полями (Netscape standard)
+                            sanitized_lines.append("\t".join(parts[:7]))
                         else:
-                            # Если полей мало, значит что-то склеилось. Пытаемся сохранить как есть
-                            sanitized_lines.append(clean_line)
+                            sanitized_lines.append("\t".join(parts))
                     else:
                         sanitized_lines.append(clean_line)
                 
