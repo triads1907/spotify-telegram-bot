@@ -147,7 +147,9 @@ class DownloadService:
         
         ydl_opts = {
             # Принимаем любое лучшее аудио. 'ba' - сокращение от 'bestaudio'
-            'format': 'ba/best',
+            'format': 'bestaudio/best', # Более полное описание формата
+            'js_runtimes': {'node': {}},   # Явно указываем Node.js для решения сигнатур
+            'remote_components': 'ejs:github', # Позволяет скачивать актуальные скрипты-решатели
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
@@ -211,7 +213,10 @@ class DownloadService:
                     "failed to extract player response",
                     "innertube_context",
                     "extractor error",
-                    "unsupported url"
+                    "unsupported url",
+                    "requested format is not available",
+                    "video unavailable",
+                    "this video is not available"
                 ])
 
             # Попытка 1: Нативные мобильные клиенты (самые надежные)
