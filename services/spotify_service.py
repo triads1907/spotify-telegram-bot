@@ -28,6 +28,7 @@ class SpotifyService:
             'track': r'spotify\.com/track/([a-zA-Z0-9]+)',
             'album': r'spotify\.com/album/([a-zA-Z0-9]+)',
             'playlist': r'spotify\.com/playlist/([a-zA-Z0-9]+)',
+            'artist': r'spotify\.com/artist/([a-zA-Z0-9]+)',
         }
         
         for content_type, pattern in patterns.items():

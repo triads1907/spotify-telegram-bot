@@ -282,11 +282,14 @@ def get_library():
 def search_by_url(url):
     """Поиск по Spotify URL"""
     try:
-        # Определяем тип URL (track, album, playlist)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        info = None
+        collection_name = None
+        
+        # Определяем тип URL (track, album, playlist, artist)
         if '/track/' in url:
-            # Получаем информацию о треке
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             track_info = loop.run_until_complete(spotify_service.get_track_info_from_url(url))
             loop.close()
             
@@ -304,48 +307,40 @@ def search_by_url(url):
                 })
         
         elif '/playlist/' in url:
-            # Поддержка Spotify плейлистов
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            playlist_info = loop.run_until_complete(spotify_service.get_playlist_info(url))
-            loop.close()
-            
-            if playlist_info and playlist_info.get('tracks'):
-                # Форматируем треки плейлиста
-                tracks = []
-                for track in playlist_info['tracks']:
-                    tracks.append({
-                        'id': track.get('id', f"{track['artist']}_{track['name']}"),  # Используем ID из сервиса или генерируем
-                        'name': track['name'],
-                        'artist': track['artist'],
-                        'album': playlist_info['name'],  # Используем название плейлиста как альбом
-                        'duration': track.get('duration', 0),
-                        'image': track.get('image'),
-                        'preview_url': None,
-                        'playlist_name': playlist_info['name']
-                    })
-                
-                return jsonify({
-                    'tracks': tracks,
-                    'playlist_info': {
-                        'name': playlist_info['name'],
-                        'total_tracks': playlist_info['total_tracks']
-                    }
-                })
-            else:
-                return jsonify({
-                    'error': 'Could not extract tracks from playlist. Please try again or use a different playlist.'
-                }), 404
-        
+            info = loop.run_until_complete(spotify_service.get_playlist_info(url))
         elif '/album/' in url:
-            # Для альбомов пока не поддерживается
-            return jsonify({
-                'error': 'Album and playlist support coming soon',
-                'tracks': []
-            })
+            info = loop.run_until_complete(spotify_service.get_album_info(url))
+        elif '/artist/' in url:
+            info = loop.run_until_complete(spotify_service.get_artist_info(url))
         
-        return jsonify({'tracks': []})
+        loop.close()
+        
+        if info and info.get('tracks'):
+            # Формируем треки
+            tracks = []
+            for track in info['tracks']:
+                tracks.append({
+                    'id': track.get('id', f"{track['artist']}_{track['name']}"),
+                    'name': track['name'],
+                    'artist': track['artist'],
+                    'album': track.get('album') or info['name'],
+                    'duration': track.get('duration', 0),
+                    'image': track.get('image'),
+                    'preview_url': None,
+                    'collection_name': info['name'],
+                    'collection_type': info.get('type', 'collection')
+                })
+            
+            return jsonify({
+                'tracks': tracks,
+                'collection_info': {
+                    'name': info['name'],
+                    'type': info.get('type', 'collection'),
+                    'total_tracks': len(tracks)
+                }
+            })
+            
+        return jsonify({'tracks': [], 'error': 'No tracks found in this link'})
     
     except Exception as e:
         print(f"❌ Error in search_by_url: {e}")
