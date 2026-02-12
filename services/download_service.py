@@ -343,8 +343,12 @@ class DownloadService:
                 if strategy.get('no_cookies'):
                     current_opts['cookiefile'] = None
                 
-                # If we already failed once and have a failed_id, use ytsearch5 as fallback
+                # If we already failed once, switch target to BROAD SEARCH for alternatives
                 if i > 1:
+                    if download_target != search_query:
+                        print(f"🔄 Switching from direct URL to search fallback: {search_query}")
+                        download_target = search_query
+
                     current_opts['default_search'] = 'ytsearch5'
                     current_opts['noplaylist'] = False
                     current_opts['max_downloads'] = 1
@@ -352,21 +356,22 @@ class DownloadService:
                     safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
                     current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
-                print(f"📡 Step {i}/4: Trying strategy {strategy}")
+                print(f"📡 Strategy {i}/4: Trying {strategy}")
                 last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
                 
                 if self._is_error_fatal(last_result):
-                    print(f"✨ Strategy {i} SUCCEEDED!")
+                    print(f"✨ Step {i} SUCCEEDED!")
                     return last_result
                 
-                print(f"❌ Strategy {i} failed. Reason: {last_result.get('error') if isinstance(last_result, dict) else 'Unknown'}")
+                # Extract error string
+                err_str = last_result.get('error') if isinstance(last_result, dict) else str(last_result)
+                print(f"❌ Step {i} failed. Reason: {err_str}")
                 
                 # If we have a failed ID, blacklist it for next attempts
-                if isinstance(last_result, dict) and 'error' in last_result:
-                    failed_id = self._extract_youtube_id(last_result['error'])
-                    if failed_id:
-                        print(f"🚫 Blacklisting ID {failed_id} for next steps")
-                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
+                failed_id = self._extract_youtube_id(err_str)
+                if failed_id:
+                    print(f"🚫 Blacklisting ID {failed_id} for next steps")
+                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
                 
                 await asyncio.sleep(1)
 
