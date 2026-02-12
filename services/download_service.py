@@ -92,20 +92,23 @@ class DownloadService:
             node_version = subprocess.check_output(['node', '-v'], stderr=subprocess.STDOUT).decode().strip()
             print(f"✅ [2026 Environment] Node.js detected: {node_version}")
             
-            # Проверка yt-dlp версии
-            import yt_dlp
             print(f"✅ [2026 Environment] yt-dlp version: {yt_dlp.version.__version__}")
             
             # Check ffmpeg
             try:
-                ffmpeg_version = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().splitlines()[0]
-                print(f"✅ [2026 Environment] ffmpeg detected: {ffmpeg_version}")
-            except FileNotFoundError:
+                import subprocess
+                ffmpeg_output = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().splitlines()[0]
+                print(f"✅ [2026 Environment] ffmpeg detected: {ffmpeg_output}")
+            except Exception:
                 print(f"⚠️ [2026 Environment] ffmpeg NOT found! Conversions to MP3 will fail.")
                 
         except Exception as e:
             print(f"⚠️ [2026 Environment] Diagnostic warning: {e}")
             print(f"ℹ️ YouTube downloads might fail without a JS runtime on some tracks.")
+
+    def _check_environment_legacy(self):
+        # We merge this into the main initialized log
+        pass
 
     def _sanitize_cookies(self, content: str) -> str:
         """Очистка и исправление формата кук Netscape"""
@@ -140,7 +143,9 @@ class DownloadService:
         return "\n".join(sanitized) + "\n"
 
     def _check_environment(self):
-        print(f"🚀 DownloadService v13 (Robust File Resolution) Loaded")
+        print(f"🚀 DownloadService v14 (Diagnostic + ID Search) Loaded")
+        print(f"📂 Download directory: {self.download_dir}")
+        print(f"📍 Current Workdir: {os.getcwd()}")
         if os.path.exists(self.cookies_path):
             print(f"🍪 YouTube cookie file found: {self.cookies_path}")
         else:
@@ -196,21 +201,34 @@ class DownloadService:
                     print(f"✅ Found file via metadata match: {potential_path}")
                     return potential_path, entry
 
-        print("⚠️ No direct match found in entries. Checking recent files (Universal Fallback)...")
-        # 3. Fallback: Recent file (Universal - ignores extension/name matches)
-        # Scan for ANY file type that might have been downloaded (mp3, webm, m4a, opus)
-        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4']
+        print("⚠️ No direct match found in entries. Checking recent files (Universal Fallback v14)...")
+        # 3. Fallback: Search by ID (if ID is in filename)
+        for i, entry in enumerate(entries):
+            vid_id = entry.get('id')
+            if vid_id:
+                print(f"🔍 Searching by ID match: *{vid_id}*")
+                pattern = os.path.join(download_dir, f'*{vid_id}*.*')
+                id_files = [f for f in glob.glob(pattern) if not f.endswith('.part') and not f.endswith('.ytdl')]
+                if id_files:
+                    best_id_file = max(id_files, key=os.path.getmtime)
+                    print(f"✅ Found file via ID match: {best_id_file}")
+                    return best_id_file, entry
+
+        # 4. Fallback: Recent file (Universal - ignores extension/name matches)
+        # Scan for ANY file type that might have been downloaded
+        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4', 'mkv']
         recent_candidates = []
         
         now = time.time()
         for ext in possible_extensions:
             pattern = os.path.join(download_dir, f'*.{ext}')
             files = glob.glob(pattern)
-            recent_candidates.extend([f for f in files if now - os.path.getctime(f) < 60])
+            # Увеличиваем окно до 5 минут (300с)
+            recent_candidates.extend([f for f in files if now - os.path.getmtime(f) < 300])
             
         if recent_candidates:
             # Pick the most recent one
-            best_candidate = max(recent_candidates, key=os.path.getctime)
+            best_candidate = max(recent_candidates, key=os.path.getmtime)
             print(f"✅ Found file via Universal Fallback: {best_candidate}")
             return best_candidate, entries[0] if entries else info
             
@@ -432,13 +450,17 @@ class DownloadService:
                     file_size = os.path.getsize(file_path)
                 else:
                     print(f"⚠️ Файл не найден после всех попыток: {file_path}")
-                    # Last ditch effort
+                    # Last ditch effort: ANY file in downloads
                     import glob
-                    pattern = os.path.join(self.download_dir, f'*.{file_format}')
-                    all_files = glob.glob(pattern)
-                    if all_files:
-                        file_path = max(all_files, key=os.path.getctime)
+                    files = []
+                    for ext in [file_format, 'webm', 'm4a', 'opus', 'mp4']:
+                        pattern = os.path.join(self.download_dir, f'*.{ext}')
+                        files.extend(glob.glob(pattern))
+                    
+                    if files:
+                        file_path = max(files, key=os.path.getmtime)
                         file_size = os.path.getsize(file_path)
+                        print(f"🆘 Emergency recovery: Using {file_path}")
 
                 return {
                     'file_path': file_path,
