@@ -202,7 +202,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(btn_regex), handle_menu_buttons))
     
     # Обработчик Spotify ссылок
-    spotify_link_filter = filters.TEXT & filters.Regex(r'(https?://)?(open\.)?spotify\.com/(track|album|playlist)/[a-zA-Z0-9]+')
+    spotify_link_filter = filters.TEXT & filters.Regex(r'(https?://)?(open\.)?spotify\.com/(track|album|playlist|artist)/[a-zA-Z0-9]+')
     application.add_handler(MessageHandler(spotify_link_filter, handle_spotify_link))
     
     # ========== ОБРАБОТЧИКИ CALLBACK ЗАПРОСОВ ==========

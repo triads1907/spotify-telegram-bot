@@ -156,146 +156,152 @@ class SpotifyService:
     async def get_playlist_info(self, playlist_url: str) -> Optional[Dict]:
         """
         Получить информацию о плейлисте через веб-скрапинг
-        
-        Args:
-            playlist_url: URL плейлиста Spotify
-            
-        Returns:
-            Dict с информацией о плейлисте и списком треков
+        """
+        return await self._get_collection_info(playlist_url, 'playlist')
+
+    async def get_album_info(self, album_url: str) -> Optional[Dict]:
+        """
+        Получить информацию об альбоме через веб-скрапинг
+        """
+        return await self._get_collection_info(album_url, 'album')
+
+    async def get_artist_info(self, artist_url: str) -> Optional[Dict]:
+        """
+        Получить топ-треки артиста через веб-скрапинг
+        """
+        return await self._get_collection_info(artist_url, 'artist')
+
+    async def _get_collection_info(self, url: str, collection_type: str) -> Optional[Dict]:
+        """
+        Универсальный метод получения информации о коллекции (плейлист, альбом, артист)
+        Использует анонимный токен и Web API.
         """
         try:
-            
-            # Парсим URL для получения ID
-            parsed = self.parse_spotify_url(playlist_url)
-            if not parsed or parsed['type'] != 'playlist':
-                print("❌ Invalid playlist URL")
+            # Парсим URL
+            parsed = self.parse_spotify_url(url)
+            if not parsed or parsed['type'] != collection_type:
                 return None
             
-            playlist_id = parsed['id']
+            entity_id = parsed['id']
             
-            # Используем EMBED URL только для получения анонимного токена и базовой инфо
-            clean_url = f"https://open.spotify.com/embed/playlist/{playlist_id}"
+            # 1. Получаем анонимный токен через Embed страницу
+            embed_url = f"https://open.spotify.com/embed/{collection_type}/{entity_id}"
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             }
             
-            print(f"🔍 Fetching playlist tokens via: {clean_url}")
-            
             async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-                response = await client.get(clean_url, timeout=30.0)
+                response = await client.get(embed_url, timeout=30.0)
                 if response.status_code != 200:
                     return None
                     
                 soup = BeautifulSoup(response.text, 'html.parser')
                 script_tag = soup.find('script', {'id': '__NEXT_DATA__', 'type': 'application/json'})
                 
-                if not script_tag:
-                    return None
-                    
+                if not script_tag: return None
                 data = json.loads(script_tag.string)
-                # Извлекаем анонимный токен
                 token = data.get('props', {}).get('pageProps', {}).get('state', {}).get('settings', {}).get('session', {}).get('accessToken')
                 
                 if not token:
-                    print("⚠️ Could not extract anonymous token, falling back to basic data")
-                    # Fallback к данным из самого эмбеда (ограничено 100 треками, нет картинок)
+                    # Fallback для базовых данных без токена (если есть)
+                    print(f"⚠️ No token for {collection_type}, falling back to static data")
                     entity = data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
                     if not entity: return None
                     
                     tracks = []
-                    for idx, t in enumerate(entity.get('trackList', [])):
+                    track_list = entity.get('trackList', []) or entity.get('tracks', {}).get('items', [])
+                    for idx, t in enumerate(track_list):
+                        # В разных типах сущностей разная структура trackList
+                        track_data = t.get('track') if 'track' in t else t
                         tracks.append({
-                            'position': idx + 1,
-                            'id': t.get('uri', '').split(':')[-1] if 'uri' in t else f"idx_{idx}",
-                            'name': t.get('title', 'Unknown'),
-                            'artist': t.get('subtitle', 'Unknown Artist').replace('\u00a0', ' '),
-                            'duration': t.get('duration', 0) // 1000,
+                            'id': track_data.get('uri', '').split(':')[-1] if 'uri' in track_data else f"idx_{idx}",
+                            'name': track_data.get('title') or track_data.get('name') or "Unknown",
+                            'artist': (track_data.get('artists', [{}])[0].get('name') if 'artists' in track_data else track_data.get('subtitle', 'Unknown')).replace('\u00a0', ' '),
                             'image': None
                         })
-                    
-                    return {
-                        'id': playlist_id,
-                        'name': entity.get('name', 'Unknown Playlist'),
-                        'url': clean_url,
-                        'tracks': tracks,
-                        'total_tracks': len(tracks)
-                    }
+                    return {'id': entity_id, 'name': entity.get('name') or entity.get('title'), 'tracks': tracks}
 
-                # ИСПОЛЬЗУЕМ SPOTIFY WEB API С АНОНИМНЫМ ТОКЕНОМ
-                print(f"🚀 Using Web API with anonymous token for '{playlist_id}'")
-                api_headers = {
-                    "Authorization": f"Bearer {token}",
-                    "User-Agent": headers['User-Agent']
-                }
+                # 2. Используем Web API с анонимным токеном
+                api_headers = {"Authorization": f"Bearer {token}", "User-Agent": headers['User-Agent']}
                 
-                # Сначала получаем общую информацию о плейлисте
-                playlist_api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,images,tracks.total"
-                pl_resp = await client.get(playlist_api_url, headers=api_headers)
-                
-                playlist_name = "Unknown Playlist"
-                playlist_image = ""
-                total_tracks_count = 0
-                
-                if pl_resp.status_code == 200:
-                    pl_data = pl_resp.json()
-                    playlist_name = pl_data.get('name', playlist_name)
-                    images = pl_data.get('images', [])
-                    if images: playlist_image = images[0].get('url')
-                    total_tracks_count = pl_data.get('tracks', {}).get('total', 0)
-                
-                # Теперь скачиваем ВСЕ треки (пагинация)
+                # Базовая инфо о сущности
+                api_base = f"https://api.spotify.com/v1/{collection_type}s/{entity_id}"
+                # Для артиста нам нужны top-tracks
+                if collection_type == 'artist':
+                    api_url = f"{api_base}/top-tracks?market=US"
+                elif collection_type == 'album':
+                    api_url = f"{api_base}/tracks?limit=50"
+                else: # playlist
+                    api_url = f"{api_base}/tracks?limit=100"
+
+                # Получаем метаданные сущности (имя, картинка)
+                # Для artist top-tracks нужно сначала получить инфо об артисте
+                meta_resp = await client.get(api_base, headers=api_headers)
+                entity_name = "Unknown"
+                entity_image = ""
+                if meta_resp.status_code == 200:
+                    meta = meta_resp.json()
+                    entity_name = meta.get('name', 'Unknown')
+                    images = meta.get('images', [])
+                    if images: entity_image = images[0].get('url')
+
+                # Получаем треки
                 tracks = []
                 offset = 0
-                limit = 100
+                limit = 100 # Max for playlist, 50 for album/artist
                 
                 while True:
-                    tracks_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?offset={offset}&limit={limit}&fields=items(track(id,name,artists,duration_ms,album(name,images)))"
-                    t_resp = await client.get(tracks_url, headers=api_headers)
+                    current_api_url = api_url
+                    if collection_type != 'artist': # Artist top-tracks doesn't use offset/limit for tracks directly
+                        current_api_url = f"{api_base}/tracks?offset={offset}&limit={limit}"
                     
-                    if t_resp.status_code != 200:
+                    tracks_resp = await client.get(current_api_url, headers=api_headers)
+                    
+                    if tracks_resp.status_code != 200:
                         break
                         
-                    t_data = t_resp.json()
-                    items = t_data.get('items', [])
+                    t_data = tracks_resp.json()
+                    # У artist top tracks корень 'tracks', у альбомов/плейлистов пагинация с 'items'
+                    items = t_data.get('tracks') if collection_type == 'artist' else t_data.get('items', [])
+                    
                     if not items:
                         break
                         
                     for item in items:
-                        t = item.get('track')
+                        t = item.get('track') if collection_type == 'playlist' else item
                         if not t: continue
                         
                         artists = ", ".join([a.get('name', '') for a in t.get('artists', [])])
-                        images = t.get('album', {}).get('images', [])
-                        t_image = images[0].get('url') if images else playlist_image
+                        
+                        # Картинка трека
+                        t_image = entity_image
+                        if 'album' in t:
+                            imgs = t.get('album', {}).get('images', [])
+                            if imgs: t_image = imgs[0].get('url')
                         
                         tracks.append({
-                            'position': len(tracks) + 1,
                             'id': t.get('id'),
                             'name': t.get('name'),
                             'artist': artists,
-                            'duration': t.get('duration_ms', 0) // 1000,
                             'image': t_image,
-                            'album': t.get('album', {}).get('name')
+                            'album': t.get('album', {}).get('name') if 'album' in t else entity_name if collection_type == 'album' else None
                         })
                     
-                    if len(items) < limit or len(tracks) >= 1000: # Ограничиваем 1000 треками для безопасности
+                    if collection_type == 'artist' or len(items) < limit or len(tracks) >= 1000: # Limit to 1000 tracks for safety
                         break
                     
                     offset += limit
-                
-                print(f"✅ Extracted {len(tracks)} tracks from '{playlist_name}'")
-                
+
                 return {
-                    'id': playlist_id,
-                    'name': playlist_name,
-                    'url': f"https://open.spotify.com/playlist/{playlist_id}",
-                    'image': playlist_image,
+                    'id': entity_id,
+                    'type': collection_type,
+                    'name': entity_name,
+                    'image': entity_image,
                     'tracks': tracks,
-                    'total_tracks': total_tracks_count or len(tracks)
+                    'total_tracks': len(tracks)
                 }
-                
         except Exception as e:
-            print(f"❌ Error fetching playlist: {e}")
+            print(f"❌ Error fetching {collection_type}: {e}")
             import traceback
             traceback.print_exc()
             return None

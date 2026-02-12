@@ -44,9 +44,44 @@ async def handle_spotify_link(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
+    # Обработка коллекций (album, playlist, artist)
+    if parsed['type'] in ['album', 'playlist', 'artist']:
+        status_msg = await update.message.reply_text(get_string("searching", lang))
+        try:
+            if parsed['type'] == 'album':
+                info = await spotify_service.get_album_info(message_text)
+            elif parsed['type'] == 'artist':
+                info = await spotify_service.get_artist_info(message_text)
+            else: # playlist
+                info = await spotify_service.get_playlist_info(message_text)
+
+            if not info or not info.get('tracks'):
+                await status_msg.edit_text("❌ Не удалось получить информацию о коллекции")
+                return
+
+            # Формируем сообщение и клавиатуру со списком треков
+            title_map = {
+                'album': "Альбом" if lang == "ru" else "Album",
+                'artist': "Топ-треки" if lang == "ru" else "Top Tracks",
+                'playlist': "Плейлист" if lang == "ru" else "Playlist"
+            }
+            
+            message = f"📦 <b>{title_map[parsed['type']]}: {info['name']}</b>\n"
+            message += f"🔢 Треков: {len(info['tracks'])}\n\n"
+            message += "Выберите трек для скачивания:" if lang == "ru" else "Select a track to download:"
+
+            # Используем существующую клавиатуру поиска для первых 10 треков
+            keyboard = get_search_results_keyboard(info['tracks'][:10])
+            
+            await status_msg.edit_text(message, reply_markup=keyboard, parse_mode='HTML')
+            return
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Ошибка при обработке коллекции: {str(e)}")
+            return
+
     if parsed['type'] != 'track':
         await update.message.reply_text(
-            "⚠️ Only tracks are supported for now." if lang == "en" else "⚠️ Пока поддерживаются только треки.\nОтправьте ссылку на отдельный трек.",
+            "⚠️ Only tracks, albums, artists and playlists are supported." if lang == "en" else "⚠️ Поддерживаются только треки, альбомы, артисты и плейлисты.",
             parse_mode='HTML'
         )
         return

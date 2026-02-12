@@ -163,6 +163,16 @@ async def download_track(query, context, callback_data, lang="ru"):
     track = await db.get_track(track_id)
     
     if not track:
+        # Если трека нет в базе (например, выбран из списка коллекции), 
+        # пробуем получить его инфо через SpotifyService
+        spotify_service = context.bot_data.get('spotify')
+        if spotify_service:
+            print(f"🔍 Track {track_id} not in DB, fetching from Spotify...")
+            track_info = await spotify_service.get_track_info(track_id)
+            if track_info:
+                track = await db.get_or_create_track(track_info)
+        
+    if not track:
         await query.message.reply_text(get_string("track_not_found", lang))
         return
     
