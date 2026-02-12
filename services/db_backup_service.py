@@ -115,6 +115,12 @@ class DatabaseBackupService:
                     pin_success = self.storage.pin_message(result['message_id'])
                     if pin_success:
                         print(f"📌 Backup message pinned: {result['message_id']}")
+                        
+                        # Удаляем сервисное сообщение "Сообщение закреплено" (оно обычно идет следующим за закрепом)
+                        # Мы пытаемся удалить message_id + 1, что обычно и является системным уведомлением
+                        # Это убирает визуальный шум в канале
+                        service_msg_id = result['message_id'] + 1
+                        self.storage.delete_message(service_msg_id)
                     
                     # Сохраняем message_id бэкапа для безопасного удаления
                     self.backup_message_ids.append(result['message_id'])

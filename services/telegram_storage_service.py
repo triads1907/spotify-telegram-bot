@@ -227,6 +227,22 @@ class TelegramStorageService:
             traceback.print_exc()
             return False
 
+    def delete_message(self, message_id: int) -> bool:
+        """Удалить сообщение из канала"""
+        try:
+            response = httpx.post(
+                f"{self.base_url}/deleteMessage",
+                data={
+                    'chat_id': self.channel_id,
+                    'message_id': message_id
+                },
+                timeout=10.0
+            )
+            return response.status_code == 200 and response.json().get('ok', False)
+        except Exception as e:
+            print(f"❌ Error deleting message {message_id}: {e}")
+            return False
+
     def pin_message(self, message_id: int) -> bool:
         """Закрепить сообщение в канале"""
         try:

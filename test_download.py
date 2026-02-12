@@ -1,39 +1,32 @@
-"""
-Тест скачивания трека
-"""
 import asyncio
+import os
 import sys
-sys.path.insert(0, 'd:/uktamaliyev/hack/1')
+
+# Add the project root to sys.path
+sys.path.append(os.getcwd())
 
 from services.download_service import DownloadService
 
-async def test_download():
-    print("🧪 Тест скачивания трека\n")
+async def main():
+    service = DownloadService()
+    # Изначально проблемные треки:
+    # 1. wHlAnhkLUvw (Dame Un Grrr)
+    # 2. Tdt79d2BaoI (SAD ABOUT FUNK)
+    # 3. OuG2g6n68-E (NO BALANCAR)
+    target_url = "https://www.youtube.com/watch?v=OuG2g6n68-E"
+    quality = "320"
+    file_format = "mp3"
     
-    downloader = DownloadService()
+    print(f"🧪 Testing download for: {target_url}")
+    # Используем новый метод для прямой загрузки по URL
+    result = await service.download_from_url(target_url, quality, file_format)
     
-    # Тестируем с названием трека
-    search_query = "Pique do Ombrinho"
-    
-    print(f"🔍 Поиск: {search_query}")
-    print("⏳ Скачивание...")
-    
-    result = await downloader.search_and_download_by_query(search_query)
-    
-    if result:
-        print(f"\n✅ Успешно скачано!")
-        print(f"   📁 Файл: {result['file_path']}")
-        print(f"   🎵 Название: {result['title']}")
-        print(f"   ⏱️  Длительность: {result['duration']} сек")
-        
-        import os
+    if result and 'file_path' in result:
+        print(f"✅ Success! File downloaded to: {result['file_path']}")
         if os.path.exists(result['file_path']):
-            print(f"   ✅ Файл существует!")
-            print(f"   📊 Размер: {os.path.getsize(result['file_path']) / 1024 / 1024:.2f} MB")
-        else:
-            print(f"   ❌ Файл НЕ найден!")
+            print(f"📂 File verified on disk. Size: {os.path.getsize(result['file_path'])} bytes")
     else:
-        print("\n❌ Ошибка скачивания")
+        print(f"❌ Download failed: {result.get('error') if result else 'Unknown error'}")
 
-if __name__ == '__main__':
-    asyncio.run(test_download())
+if __name__ == "__main__":
+    asyncio.run(main())
