@@ -126,11 +126,9 @@ class DownloadService:
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    # Используем мобильные клиенты в приоритете, так как они стабильнее на серверах
-                    'player_client': ['ios', 'android', 'mweb', 'web_music'],
+                    # Начинаем с самых стабильных мобильных плееров
+                    'player_client': ['ios', 'android'],
                     'skip': ['translated_subs'],
-                    # Убираем жесткую привязку po_token к mweb, так как это может вызывать 400 Bad Request
-                    # yt-dlp сам выберет оптимальный токен для выбранного клиента
                 }
             },
             'http_headers': {
@@ -157,46 +155,58 @@ class DownloadService:
         print(f"🚀 Starting download attempt 1{api_mode} (Cookies: {'YES' if has_cookies else 'NO'})")
         
         try:
-            # Attempt 1: Standard comprehensive list
             loop = asyncio.get_event_loop()
+            
+            # Попытка 1: Мобильные клиенты (iOS/Android)
+            print(f"🚀 Attempt 1: Using Mobile clients (ios, android)...")
             result = await loop.run_in_executor(
                 None, 
                 self._download_sync, 
-                download_target,  # Используем URL от API или поисковый запрос
+                download_target,
                 ydl_opts,
                 file_format
             )
             
-            # Check for bot detection
-            if result and isinstance(result, dict) and 'error' in result:
-                err = result['error']
-                if "confirm you're not a bot" in err or "Sign in" in err or "403" in err:
-                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with Attempt 2 (Mobile only)...")
-                    # Attempt 2: Purely mobile (harder to detect)
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
+            # Проверка на блокировку
+            def is_blocked(res):
+                if not res or not isinstance(res, dict) or 'error' not in res:
+                    return False
+                e = res['error'].lower()
+                return any(msg in e for msg in [
+                    "confirm you're not a bot", 
+                    "sign in", 
+                    "403", 
+                    "page needs to be reloaded",
+                    "forbidden"
+                ])
+
+            if is_blocked(result):
+                # Попытка 2: Музыкальные и мобильный веб (web_music, mweb)
+                print(f"⚠️ Attempt 1 blocked/failed. Trying Attempt 2: Music & Mobile Web...")
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
+                
+                result = await loop.run_in_executor(
+                    None, 
+                    self._download_sync, 
+                    download_target,
+                    ydl_opts,
+                    file_format
+                )
+                
+                if is_blocked(result):
+                    # Попытка 3: TV и встроенные плееры (иногда меньше ограничений)
+                    print(f"⚠️ Attempt 2 blocked/failed. Trying Attempt 3: TV & Embedded...")
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
                     
                     result = await loop.run_in_executor(
                         None, 
                         self._download_sync, 
-                        download_target,  # Используем тот же target
+                        download_target,
                         ydl_opts,
                         file_format
                     )
-                    
-                    # Attempt 3: TV and Embedded (sometimes less restricted)
-                    if result and isinstance(result, dict) and 'error' in result:
-                        err = result['error']
-                        if "confirm you're not a bot" in err or "Sign in" in err:
-                            print(f"⚠️ Bot detection triggered on Attempt 2. Retrying with Attempt 3 (TV/Embedded)...")
-                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
-                            
-                            result = await loop.run_in_executor(
-                                None, 
-                                self._download_sync, 
-                                download_target,  # Используем тот же target
-                                ydl_opts,
-                                file_format
-                            )
+            
+            return result
             
             return result
         except Exception as e:
