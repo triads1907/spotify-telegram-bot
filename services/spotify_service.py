@@ -236,10 +236,13 @@ class SpotifyService:
                     api_url = f"{api_base}/tracks?limit=100"
 
                 # Получаем метаданные сущности (имя, картинка)
-                # Для artist top-tracks нужно сначала получить инфо об артисте
                 meta_resp = await client.get(api_base, headers=api_headers)
                 entity_name = "Unknown"
                 entity_image = ""
+                
+                # Если анонимный API забанен (429), используем данные из HTML
+                use_static_fallback = meta_resp.status_code != 200
+
                 if meta_resp.status_code == 200:
                     meta = meta_resp.json()
                     entity_name = meta.get('name', 'Unknown')
@@ -248,50 +251,86 @@ class SpotifyService:
 
                 # Получаем треки
                 tracks = []
-                offset = 0
-                limit = 100 # Max for playlist, 50 for album/artist
                 
-                while True:
-                    current_api_url = api_url
-                    if collection_type != 'artist': # Artist top-tracks doesn't use offset/limit for tracks directly
-                        current_api_url = f"{api_base}/tracks?offset={offset}&limit={limit}"
+                if not use_static_fallback:
+                    offset = 0
+                    limit = 100
                     
-                    tracks_resp = await client.get(current_api_url, headers=api_headers)
+                    while True:
+                        current_api_url = api_url
+                        if collection_type != 'artist':
+                            current_api_url = f"{api_base}/tracks?offset={offset}&limit={limit}"
+                        
+                        tracks_resp = await client.get(current_api_url, headers=api_headers)
+                        if tracks_resp.status_code != 200:
+                            use_static_fallback = True
+                            break
+                            
+                        t_data = tracks_resp.json()
+                        items = t_data.get('tracks') if collection_type == 'artist' else t_data.get('items', [])
+                        
+                        if not items: break
+                            
+                        for item in items:
+                            t = item.get('track') if collection_type == 'playlist' else item
+                            if not t: continue
+                            
+                            artists = ", ".join([a.get('name', '') for a in t.get('artists', [])])
+                            t_image = entity_image
+                            if 'album' in t:
+                                imgs = t.get('album', {}).get('images', [])
+                                if imgs: t_image = imgs[0].get('url')
+                            
+                            tracks.append({
+                                'id': t.get('id'),
+                                'name': t.get('name'),
+                                'artist': artists,
+                                'image': t_image,
+                                'album': t.get('album', {}).get('name') if 'album' in t else entity_name if collection_type == 'album' else None
+                            })
+                        
+                        if collection_type == 'artist' or len(items) < limit or len(tracks) >= 1000:
+                            break
+                        offset += limit
+
+                # Финальный fallback к статическим данным (если API не сработал на любом этапе)
+                if use_static_fallback or not tracks:
+                    print(f"🔄 Using static data extraction for {collection_type} (API rate limited)")
+                    entity = data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+                    if not entity: return None
                     
-                    if tracks_resp.status_code != 200:
-                        break
-                        
-                    t_data = tracks_resp.json()
-                    # У artist top tracks корень 'tracks', у альбомов/плейлистов пагинация с 'items'
-                    items = t_data.get('tracks') if collection_type == 'artist' else t_data.get('items', [])
+                    entity_name = entity.get('name') or entity.get('title') or "Unknown"
+                    entity_image = ""
+                    images = entity.get('visuals', {}).get('avatar', []) or entity.get('coverArt', {}).get('sources', [])
+                    if images: entity_image = images[0].get('url')
                     
-                    if not items:
-                        break
+                    tracks = []
+                    # Для артиста треки в tracks, для альбома в trackList или tracks
+                    track_list = entity.get('tracks', {}).get('items', []) or entity.get('trackList', [])
+                    if not track_list and 'tracks' in entity and isinstance(entity['tracks'], list):
+                        track_list = entity['tracks']
+                    
+                    for idx, t in enumerate(track_list):
+                        t_data = t.get('track') if 'track' in t else t
+                        # Пробуем разные поля для имени и артиста
+                        t_name = t_data.get('name') or t_data.get('title') or "Unknown"
+                        t_artist = "Unknown"
+                        if 'artists' in t_data:
+                            t_artist = ", ".join([a.get('name', 'Unknown') for a in t_data['artists']])
+                        elif 'subtitle' in t_data:
+                            t_artist = t_data.get('subtitle')
                         
-                    for item in items:
-                        t = item.get('track') if collection_type == 'playlist' else item
-                        if not t: continue
-                        
-                        artists = ", ".join([a.get('name', '') for a in t.get('artists', [])])
-                        
-                        # Картинка трека
-                        t_image = entity_image
-                        if 'album' in t:
-                            imgs = t.get('album', {}).get('images', [])
-                            if imgs: t_image = imgs[0].get('url')
+                        # Spotify ID из URI или как есть
+                        t_id = t_data.get('id')
+                        if not t_id and 'uri' in t_data:
+                            t_id = t_data.get('uri').split(':')[-1]
                         
                         tracks.append({
-                            'id': t.get('id'),
-                            'name': t.get('name'),
-                            'artist': artists,
-                            'image': t_image,
-                            'album': t.get('album', {}).get('name') if 'album' in t else entity_name if collection_type == 'album' else None
+                            'id': t_id or f"idx_{idx}",
+                            'name': t_name,
+                            'artist': t_artist.replace('\u00a0', ' '),
+                            'image': entity_image
                         })
-                    
-                    if collection_type == 'artist' or len(items) < limit or len(tracks) >= 1000: # Limit to 1000 tracks for safety
-                        break
-                    
-                    offset += limit
 
                 return {
                     'id': entity_id,
