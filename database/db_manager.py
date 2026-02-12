@@ -125,8 +125,19 @@ class DatabaseManager:
     # ========== ПЛЕЙЛИСТЫ ==========
     
     async def create_playlist(self, user_id: int, name: str, description: str = None) -> Playlist:
-        """Создать новый плейлист"""
+        """Создать новый плейлист с гарантией существования пользователя"""
         async with self.async_session() as session:
+            # ГАРАНТИРУЕМ существование пользователя (Foreign Key integrity)
+            # Это критично для веб-версии, если пользователь еще не взаимодействовал с ботом
+            user_result = await session.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+            
+            if not user:
+                print(f"⚠️ Creating placeholder user {user_id} during playlist creation.")
+                user = User(id=user_id, username="Web User")
+                session.add(user)
+                await session.flush() # Чтобы ID стал доступен для FK
+            
             playlist = Playlist(
                 user_id=user_id,
                 name=name,
@@ -350,6 +361,12 @@ class DatabaseManager:
     async def add_to_favorites(self, user_id: int, track_id: str):
         """Добавить трек в избранное"""
         async with self.async_session() as session:
+            # ГАРАНТИРУЕМ существование пользователя
+            user_check = await session.execute(select(User).where(User.id == user_id))
+            if not user_check.scalar_one_or_none():
+                session.add(User(id=user_id, username="Web User"))
+                await session.flush()
+
             # Проверяем, не добавлен ли уже
             result = await session.execute(
                 select(Favorite)
@@ -574,6 +591,12 @@ class DatabaseManager:
                     # Удаляем истекший токен
                     await session.delete(existing_token)
                     await session.commit()
+
+            # ГАРАНТИРУЕМ существование пользователя
+            user_check = await session.execute(select(User).where(User.id == user_id))
+            if not user_check.scalar_one_or_none():
+                session.add(User(id=user_id, username="Auth User"))
+                await session.flush()
 
             expires_at = None
             if expires_in_seconds:
