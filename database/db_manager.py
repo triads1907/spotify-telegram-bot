@@ -618,11 +618,23 @@ class DatabaseManager:
                                  image_url: str = None) -> TelegramFile:
         """Сохранить file_id в кеш"""
         async with self.async_session() as session:
-            # Проверяем, есть ли уже запись
+            # 1. Проверяем по ID
             result = await session.execute(
                 select(TelegramFile).where(TelegramFile.track_id == track_id)
             )
             existing = result.scalar_one_or_none()
+            
+            # 2. ФАЛЛБЭК: Если по ID не нашли, проверяем по Имени и Артисту
+            # (Функция deduplication: предотвращает дубликаты если Spotify ID не совпал с ID из Sync)
+            if not existing and artist and track_name:
+                name_result = await session.execute(
+                    select(TelegramFile)
+                    .where(func.lower(TelegramFile.artist) == artist.lower())
+                    .where(func.lower(TelegramFile.track_name) == track_name.lower())
+                )
+                existing = name_result.scalar_one_or_none()
+                if existing:
+                    print(f"🔗 Re-linking track {track_id} to existing file in Storage: {artist} - {track_name}")
             
             if existing:
                 # Обновляем существующую запись

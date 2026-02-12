@@ -182,23 +182,47 @@ async def download_track(query, context, callback_data, lang="ru"):
         quality = user.preferred_quality
         file_format = user.format
         
-        # Проверяем кэш (Функция 10)
+        # Проверяем кэш (Функция 10 + Deduplication)
         cached_file_id = await db.get_cached_file_id(track_id, file_format=file_format, quality=quality)
+        
+        # НОВОЕ: Если в кэше конкретного качества нет, проверяем общее хранилище Telegram Storage
+        # Это предотвращает дубликаты в канале (Функция deduplication)
+        if not cached_file_id:
+            # 1. Пробуем по ID
+            telegram_file = await db.get_telegram_file(track_id)
+            if telegram_file:
+                cached_file_id = telegram_file.file_id
+                print(f"✅ Found existing track by ID in Storage (callback): {track_id}")
+            else:
+                # 2. Пробуем по Имени/Артисту
+                telegram_file_by_name = await db.get_telegram_file_by_name(track.artist, track.name)
+                if telegram_file_by_name:
+                    cached_file_id = telegram_file_by_name.file_id
+                    print(f"✅ Found existing track by name in Storage (callback): {track.artist} - {track.name}")
+
         if cached_file_id:
             await status_msg.edit_text(get_string("from_cache", lang))
             try:
                 # Формируем информативный caption для кэша
-                if file_format == 'mp3':
-                    quality_display = f"{quality} kbps"
+                quality_display = ""
+                # Если мы нашли в общем хранилище, мы не знаем точное качество, пишем "High Quality"
+                found_in_cache_specific = await db.get_cached_file_id(track_id, file_format=file_format, quality=quality)
+                
+                if found_in_cache_specific:
+                    if file_format == 'mp3':
+                        quality_display = f"{quality} kbps"
+                    else:
+                        if quality == '1411': quality_display = "1411 kbps (CD)"
+                        elif quality == '2300': quality_display = "2300 kbps (48kHz/24bit)"
+                        elif quality == '4600': quality_display = "4600 kbps (96kHz/24bit)"
+                        elif quality == '9200': quality_display = "9200 kbps (192kHz/24bit)"
+                        else: quality_display = "Lossless"
                 else:
-                    if quality == '1411': quality_display = "1411 kbps (CD)"
-                    elif quality == '2300': quality_display = "2300 kbps (48kHz/24bit)"
-                    elif quality == '4600': quality_display = "4600 kbps (96kHz/24bit)"
-                    elif quality == '9200': quality_display = "9200 kbps (192kHz/24bit)"
-                    else: quality_display = "Lossless"
-                format_label = file_format.upper()
+                    quality_display = "Original Quality"
+                
+                format_label = file_format.upper() if found_in_cache_specific else "AUDIO"
                 caption = f"🎵 <b>{track.name}</b>\n👤 {track.artist}\n\n🎧 {format_label} • {quality_display}\n" + \
-                          (f"✨ From cache" if lang == "en" else f"✨ Из кэша")
+                          (f"✨ From library" if lang == "en" else f"✨ Из библиотеки")
                 keyboard = get_track_actions_keyboard(track_id)
                 
                 # Скачиваем обложку для thumbnail если есть

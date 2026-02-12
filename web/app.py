@@ -402,11 +402,21 @@ def download():
                     # 1. Создаем трек в БД с изображением из YouTube
                     loop.run_until_complete(db.get_or_create_track(track_data))
                     
-                    # 2. Загружаем в Telegram Storage (чтобы появился в Discover)
-                    print(f"📤 Auto-uploading web download to Telegram: {track_name}")
-                    upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_artist} - {track_name}")
-                    if upload_result and upload_result.get('file_id'):
-                        file_id = upload_result['file_id']
+                    # 2. ПРОВЕРЯЕМ ДУБЛИКАТЫ ПЕРЕД ЗАГРУЗКОЙ (Функция deduplication)
+                    existing_file = loop.run_until_complete(db.get_telegram_file(track_id))
+                    if not existing_file:
+                        existing_file = loop.run_until_complete(db.get_telegram_file_by_name(track_artist, track_name))
+                    
+                    if existing_file:
+                        print(f"✅ Track already in Telegram Storage, skipping duplicate upload: {track_name}")
+                        file_id = existing_file.file_id
+                    else:
+                        # Загружаем в Telegram Storage (чтобы появился в Discover)
+                        print(f"📤 Auto-uploading web download to Telegram: {track_name}")
+                        upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_artist} - {track_name}")
+                        file_id = upload_result.get('file_id') if upload_result else None
+                    
+                    if file_id:
                         # Сохраняем во все кэш-таблицы
                         loop.run_until_complete(db.update_track_cache(track_id, file_id, file_format, quality))
                         loop.run_until_complete(db.save_telegram_file(
@@ -466,11 +476,21 @@ def download():
                 }
                 loop.run_until_complete(db.get_or_create_track(track_data))
 
-                # 2. Загружаем в Telegram Storage
-                print(f"📤 Auto-uploading web download to Telegram: {track_info['name']}")
-                upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_info['artist']} - {track_info['name']}")
-                if upload_result and upload_result.get('file_id'):
-                    file_id = upload_result['file_id']
+                # 2. ПРОВЕРЯЕМ ДУБЛИКАТЫ ПЕРЕД ЗАГРУЗКОЙ
+                existing_file = loop.run_until_complete(db.get_telegram_file(track_id))
+                if not existing_file:
+                    existing_file = loop.run_until_complete(db.get_telegram_file_by_name(track_info['artist'], track_info['name']))
+                
+                if existing_file:
+                    print(f"✅ Track already in Telegram Storage, skipping duplicate upload: {track_info['name']}")
+                    file_id = existing_file.file_id
+                else:
+                    # Загружаем в Telegram Storage
+                    print(f"📤 Auto-uploading web download to Telegram: {track_info['name']}")
+                    upload_result = get_telegram_storage().upload_file(file_path, f"🎵 {track_info['artist']} - {track_info['name']}")
+                    file_id = upload_result.get('file_id') if upload_result else None
+                
+                if file_id:
                     # Сохраняем в кэш и в Discovery-таблицу
                     loop.run_until_complete(db.update_track_cache(track_id, file_id, file_format, quality))
                     loop.run_until_complete(db.save_telegram_file(
@@ -479,7 +499,7 @@ def download():
                         artist=track_info['artist'], 
                         track_name=track_info['name'], 
                         file_size=result.get('file_size', 0),
-                        file_path=upload_result.get('file_id') # Используем file_id как путь для совместимости
+                        file_path=file_id # Используем file_id как путь для совместимости
                     ))
             except Exception as reg_e:
                 print(f"⚠️ Warning: Registration in discovery failed: {reg_e}")
@@ -700,22 +720,26 @@ def prepare_stream():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # 1. Проверяем кеш в БД (сначала общий кэш бота, затем специфичный для веб-хранилища)
-        file_id = loop.run_until_complete(db.get_cached_file_id(track_id, quality='192'))
+        # 1. Проверяем кеш в БД (ЛЮБОГО качества, чтобы не плодить дубликаты в канале)
+        # Сначала пробуем найти именно этот трек в Telegram Storage
+        telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
+        file_id = None
         
-        if not file_id:
-            # Проверяем старую таблицу TelegramFile (по ID)
-            telegram_file = loop.run_until_complete(db.get_telegram_file(track_id))
-            if telegram_file:
-                file_id = telegram_file.file_id
+        if telegram_file:
+            file_id = telegram_file.file_id
+            print(f"✅ Found existing track in Storage by ID: {track_id}")
+        else:
+            # Пробуем по Имени/Артисту (предотвращает "невидимые" дубликаты)
+            telegram_file_by_name = loop.run_until_complete(db.get_telegram_file_by_name(artist, track_name))
+            if telegram_file_by_name:
+                file_id = telegram_file_by_name.file_id
+                print(f"✅ Found existing track in Storage by name: {artist} - {track_name}")
             else:
-                # НОВОЕ: Поиск по имени (если ID из поиска Spotify не совпал с ID из Sync)
-                # Это ГАРАНТИРУЕТ отсутствие дубликатов в канале
-                print(f"🔍 Looked for {track_id} by ID, not found. Trying by name: {artist} - {track_name}")
-                telegram_file_by_name = loop.run_until_complete(db.get_telegram_file_by_name(artist, track_name))
-                if telegram_file_by_name:
-                    file_id = telegram_file_by_name.file_id
-                    print(f"✅ Found existing track in Telegram by name (ID mismatch bypassed)")
+                # В последнюю очередь смотрим старый кэш (любое качество)
+                # Перебираем качества от лучшего к худшему
+                for q in ['320', '192', '128', 'FLAC']:
+                    file_id = loop.run_until_complete(db.get_cached_file_id(track_id, quality=q))
+                    if file_id: break
         
         if file_id:
             # Файл уже в Telegram!
