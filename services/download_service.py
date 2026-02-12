@@ -322,55 +322,55 @@ class DownloadService:
         
         download_target = youtube_url if youtube_url else search_query
         loop = asyncio.get_event_loop()
-        
-        # v15: Unconditional Fallback Chain
-        strategies = [
-            # 1. Mobile (Standard)
-            {"player_client": ["android", "ios"]},
-            # 2. Music Web (Music specific)
-            {"player_client": ["web_music", "mweb", "android"]},
-            # 3. TV (Legacy / SABR fix)
-            {"player_client": ["tv", "web_embedded"]},
-            # 4. Nuclear (No Cookies)
-            {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
-        ]
-        
-        last_result = None
-        for i, strategy in enumerate(strategies, 1):
-            current_opts = ydl_opts.copy()
-            current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
+        try:
+            # v15: Unconditional Fallback Chain
+            strategies = [
+                # 1. Mobile (Standard)
+                {"player_client": ["android", "ios"]},
+                # 2. Music Web (Music specific)
+                {"player_client": ["web_music", "mweb", "android"]},
+                # 3. TV (Legacy / SABR fix)
+                {"player_client": ["tv", "web_embedded"]},
+                # 4. Nuclear (No Cookies)
+                {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+            ]
             
-            if strategy.get('no_cookies'):
-                current_opts['cookiefile'] = None
-            
-            # If we already failed once and have a failed_id, use ytsearch5 as fallback
-            if i > 1:
-                current_opts['default_search'] = 'ytsearch5'
-                current_opts['noplaylist'] = False
-                current_opts['max_downloads'] = 1
-                current_opts['ignoreerrors'] = True
-                safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
-                current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
+            last_result = None
+            for i, strategy in enumerate(strategies, 1):
+                current_opts = ydl_opts.copy()
+                current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
+                
+                if strategy.get('no_cookies'):
+                    current_opts['cookiefile'] = None
+                
+                # If we already failed once and have a failed_id, use ytsearch5 as fallback
+                if i > 1:
+                    current_opts['default_search'] = 'ytsearch5'
+                    current_opts['noplaylist'] = False
+                    current_opts['max_downloads'] = 1
+                    current_opts['ignoreerrors'] = True
+                    safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
+                    current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
-            print(f"📡 Step {i}/4: Trying strategy {strategy}")
-            last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
-            
-            if self._is_error_fatal(last_result):
-                print(f"✨ Strategy {i} SUCCEEDED!")
-                return last_result
-            
-            print(f"❌ Strategy {i} failed. Reason: {last_result.get('error') if isinstance(last_result, dict) else 'Unknown'}")
-            
-            # If we have a failed ID, blacklist it for next attempts
-            if isinstance(last_result, dict) and 'error' in last_result:
-                failed_id = self._extract_youtube_id(last_result['error'])
-                if failed_id:
-                    print(f"🚫 Blacklisting ID {failed_id} for next steps")
-                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-            
-            await asyncio.sleep(1)
+                print(f"📡 Step {i}/4: Trying strategy {strategy}")
+                last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
+                
+                if self._is_error_fatal(last_result):
+                    print(f"✨ Strategy {i} SUCCEEDED!")
+                    return last_result
+                
+                print(f"❌ Strategy {i} failed. Reason: {last_result.get('error') if isinstance(last_result, dict) else 'Unknown'}")
+                
+                # If we have a failed ID, blacklist it for next attempts
+                if isinstance(last_result, dict) and 'error' in last_result:
+                    failed_id = self._extract_youtube_id(last_result['error'])
+                    if failed_id:
+                        print(f"🚫 Blacklisting ID {failed_id} for next steps")
+                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
+                
+                await asyncio.sleep(1)
 
-        return last_result
+            return last_result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
@@ -529,45 +529,45 @@ class DownloadService:
         }
         
         loop = asyncio.get_event_loop()
-        
-        # v15: Unconditional Fallback Chain for Queries
-        strategies = [
-            {"player_client": ["android", "ios"]},
-            {"player_client": ["web_music", "mweb", "android"]},
-            {"player_client": ["tv", "web_embedded"]},
-            {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
-        ]
-        
-        last_result = None
-        for i, strategy in enumerate(strategies, 1):
-            current_opts = ydl_opts.copy()
-            current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
+        try:
+            # v15: Unconditional Fallback Chain for Queries
+            strategies = [
+                {"player_client": ["android", "ios"]},
+                {"player_client": ["web_music", "mweb", "android"]},
+                {"player_client": ["tv", "web_embedded"]},
+                {"player_client": ["web_embedded", "mweb"], "no_cookies": True}
+            ]
             
-            if strategy.get('no_cookies'):
-                current_opts['cookiefile'] = None
-            
-            if i > 1:
-                current_opts['default_search'] = 'ytsearch5'
-                current_opts['noplaylist'] = False
-                current_opts['max_downloads'] = 1
-                current_opts['ignoreerrors'] = True
-                current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
+            last_result = None
+            for i, strategy in enumerate(strategies, 1):
+                current_opts = ydl_opts.copy()
+                current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
+                
+                if strategy.get('no_cookies'):
+                    current_opts['cookiefile'] = None
+                
+                if i > 1:
+                    current_opts['default_search'] = 'ytsearch5'
+                    current_opts['noplaylist'] = False
+                    current_opts['max_downloads'] = 1
+                    current_opts['ignoreerrors'] = True
+                    current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
 
-            print(f"📡 Query Step {i}/4: Trying strategy {strategy}")
-            last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
-            
-            if self._is_error_fatal(last_result):
-                print(f"✨ Query Strategy {i} SUCCEEDED!")
-                return last_result
-            
-            if isinstance(last_result, dict) and 'error' in last_result:
-                failed_id = self._extract_youtube_id(last_result['error'])
-                if failed_id:
-                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-            
-            await asyncio.sleep(1)
+                print(f"📡 Query Step {i}/4: Trying strategy {strategy}")
+                last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
+                
+                if self._is_error_fatal(last_result):
+                    print(f"✨ Query Strategy {i} SUCCEEDED!")
+                    return last_result
+                
+                if isinstance(last_result, dict) and 'error' in last_result:
+                    failed_id = self._extract_youtube_id(last_result['error'])
+                    if failed_id:
+                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
+                
+                await asyncio.sleep(1)
 
-        return last_result
+            return last_result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
