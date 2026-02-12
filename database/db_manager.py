@@ -656,8 +656,26 @@ class DatabaseManager:
                 track = track_result.scalar_one_or_none()
                 
                 if not track:
-                    # Если трека нет, создаем минимальную запись чтобы не упасть по Foreign Key
-                    # Это запасной вариант на случай гонки процессов
+                    # НОВОЕ: Перед созданием "минимальной" записи, пробуем найти трек по Имени/Артисту
+                    # Это позволяет привязать файл из Sync к существующим богатым метаданным Spotify
+                    if artist and track_name:
+                        track_name_result = await session.execute(
+                            select(Track)
+                            .where(func.lower(Track.artist) == artist.lower())
+                            .where(func.lower(Track.name) == track_name.lower())
+                            .limit(1)
+                        )
+                        track = track_name_result.scalar_one_or_none()
+                        
+                        if track:
+                            # Мы нашли существующий трек с метаданными! 
+                            # Перенаправляем track_id на реальный Spotify ID для этой записи
+                            print(f"🔗 Linked synced file {file_id} to existing Spotify track: {track.id} ({artist} - {track_name})")
+                            track_id = track.id
+                    
+                if not track:
+                    # Если трека все еще нет, создаем минимальную запись чтобы не упасть по Foreign Key
+                    # Это происходит для треков, которых НЕТ в кэше Spotify поиска
                     print(f"⚠️ Track {track_id} not found during file save. Creating minimal record.")
                     track = Track(
                         id=track_id,
