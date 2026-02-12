@@ -31,39 +31,14 @@ class DownloadService:
         cookies_env = os.getenv('YOUTUBE_COOKIES_BASE64')
         if cookies_env:
             try:
-                # Убираем всё, что не похоже на Base64
-                import re
-                cookies_env = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_env).strip()
+                # Очищаем от пробелов и переносов (частая ошибка при копировании)
+                cookies_env = cookies_env.strip().replace('\n', '').replace('\r', '')
                 
-                # Ищем начало Netscape файла (Base64 для '# ' это 'IyB')
-                if 'IyB' in cookies_env:
-                    cookies_env = cookies_env[cookies_env.find('IyB'):]
+                print(f"📦 Attempting to restore cookies from YOUTUBE_COOKIES_BASE64...")
+                cookies_content = base64.b64decode(cookies_env).decode('utf-8')
                 
-                # Убираем ведущие '=', они могут появиться при неправильном копировании
-                cookies_env = cookies_env.lstrip('=')
-                
-                # Добавляем недостающий padding (Base64 требует кратность 4)
-                missing_padding = len(cookies_env) % 4
-                if missing_padding:
-                    cookies_env += '=' * (4 - missing_padding)
-                
-                print(f"📦 Attempting to restore YouTube cookies...")
-                try:
-                    cookies_bytes = base64.b64decode(cookies_env)
-                    try:
-                        cookies_content = cookies_bytes.decode('utf-8')
-                    except UnicodeDecodeError:
-                        cookies_content = cookies_bytes.decode('latin-1')
-                    
-                    # Санитайзер кук: приводим к стандарту Netscape
-                    cookies_content = self._sanitize_cookies(cookies_content)
-                    
-                except Exception as b64e:
-                    print(f"❌ Base64 decoding failed: {b64e}")
-                    raise b64e
-                
-                # Диагностика: проверим формат
-                is_netscape = '# Netscape' in cookies_content[:100] or '# HTTP' in cookies_content[:100]
+                # Диагностика: проверим формат (должен начинаться с # Netscape или подобных)
+                is_netscape = cookies_content.startswith('# Netscape') or '# HTTP' in cookies_content[:50]
                 
                 if len(cookies_content) > 10:
                     preview = cookies_content[:30].replace('\n', ' ')
@@ -76,180 +51,21 @@ class DownloadService:
                 
                 with open(self.cookies_path, 'w', encoding='utf-8') as f:
                     f.write(cookies_content)
-                print(f"✅ YouTube cookies restored and sanitized to {self.cookies_path}")
+                print(f"✅ YouTube cookies restored/updated to: {self.cookies_path}")
             except Exception as e:
-                print(f"⚠️ Failed to restore YouTube cookies: {e}")
+                print(f"❌ Failed to restore cookies from environment: {e}")
                 import traceback
                 traceback.print_exc()
         
-        # Диагностика окружения для 2026 года (SABR / n-challenge)
-        self._check_environment()
-
-    def _check_environment(self):
-        """Проверка окружения и диагностика (v15)"""
-        print(f"🚀 DownloadService v15 (Unconditional Fallback) Loaded")
-        print(f"📂 Download directory: {self.download_dir}")
-        print(f"📍 Current Workdir: {os.getcwd()}")
-        
-        try:
-            import subprocess
-            # Check Node.js
-            try:
-                node_version = subprocess.check_output(['node', '-v'], stderr=subprocess.STDOUT).decode().strip()
-                print(f"✅ [2026] Node.js detected: {node_version}")
-            except Exception:
-                print(f"⚠️ [2026] Node.js NOT found! YouTube might fail n-challenge.")
-
-            # Check yt-dlp
-            print(f"✅ [2026] yt-dlp version: {yt_dlp.version.__version__}")
-            
-            # Check ffmpeg
-            try:
-                ffmpeg_output = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().splitlines()[0]
-                print(f"✅ [2026] ffmpeg detected: {ffmpeg_output}")
-            except Exception:
-                print(f"⚠️ [2026] ffmpeg NOT found! Conversions to MP3 will fail.")
-                
-            # Check cookies
-            if os.path.exists(self.cookies_path):
-                print(f"🍪 YouTube cookie file found: {self.cookies_path}")
+        if os.path.exists(self.cookies_path):
+            print(f"🍪 YouTube cookie file found: {self.cookies_path}")
+        else:
+            if not self.youtube_api or not self.youtube_api.api_key:
+                print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
+                print(f"   Set YOUTUBE_API_KEY or YOUTUBE_COOKIES_BASE64 environment variable")
             else:
-                if not self.youtube_api or not self.youtube_api.api_key:
-                    print(f"⚠️ YouTube cookie file NOT found at: {self.cookies_path}")
-                else:
-                    print(f"✅ Using YouTube API instead of cookies")
-                    
-        except Exception as e:
-            print(f"⚠️ Diagnostic error: {e}")
-
-    def _sanitize_cookies(self, content: str) -> str:
-        """Очистка и исправление формата кук Netscape"""
-        lines = content.splitlines()
-        sanitized = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                sanitized.append(line)
-                continue
-            
-            # Убираем невидимые символы и ESC-последовательности
-            line = "".join(ch for ch in line if ch.isprintable() or ch == '\t')
-            
-            parts = line.split('\t')
-            if len(parts) >= 7:
-                # Берем только первые 7 колонок, если их больше
-                sanitized.append("\t".join(parts[:7]))
-            elif len(parts) > 1:
-                # Если колонок не хватает, пробуем дополнить пустыми (хотя это риск)
-                while len(parts) < 7:
-                    parts.append('')
-                sanitized.append("\t".join(parts))
+                print(f"✅ Using YouTube API instead of cookies")
         
-        # Гарантируем заголовок Netscape
-        if sanitized and not sanitized[0].startswith('# Netscape'):
-            sanitized.insert(0, '# Netscape HTTP Cookie File')
-            sanitized.insert(1, '# This file is generated by DownloadService sanitizer')
-            
-        return "\n".join(sanitized) + "\n"
-
-    def _is_error_fatal(self, result):
-        """Check if result is a success or if we should skip fallback"""
-        if not result: return False
-        if not isinstance(result, dict): return True
-        if 'error' in result: return False
-        if not result.get('file_path') or not os.path.exists(result['file_path']): return False
-        return True # Success
-        
-    def _extract_youtube_id(self, error_msg: str) -> Optional[str]:
-        """Извлечение YouTube ID из сообщения об ошибке"""
-        if not error_msg or not isinstance(error_msg, str):
-            return None
-        import re
-        match = re.search(r'\[youtube\] ([a-zA-Z0-9_-]{11}):', error_msg)
-        if match:
-            return match.group(1)
-        return None
-
-    def _create_blacklist_filter(self, failed_id: str):
-        """Создает фильтр для блокировки конкретного ID"""
-        def match_filter(info_dict, incomplete=False):
-            if info_dict.get('id') == failed_id:
-                return f"Video ID {failed_id} is blacklisted"
-            return None
-        return match_filter
-
-    def _resolve_downloaded_file(self, ydl, info, file_format, download_dir):
-        """Logic to finding the downloaded file on disk"""
-        import glob
-        import time
-
-        # Handle Search Results / Playlist
-        if not info: return None, None
-        
-        entries = info.get('entries', [info])
-        entries = [e for e in entries if e] # Filter None entries (from ignoreerrors=True)
-
-        if not entries:
-            print("⚠️ No valid entries found in results.")
-            return None, info
-
-        # Check each entry to see if its file exists
-        for i, entry in enumerate(entries):
-            # 1. Predict filename via yt-dlp logic
-            try:
-                base_path = ydl.prepare_filename(entry)
-                file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
-                
-                print(f"🔍 Entry {i} ({entry.get('id')}): Checking {file_path}")
-                
-                if os.path.exists(file_path):
-                    print(f"✅ Found file at: {file_path}")
-                    return file_path, entry
-            except Exception as e:
-                print(f"⚠️ Error preparing filename: {e}")
-            
-            # 2. Check metadata fallback
-            actual_filename = entry.get('_filename')
-            if actual_filename:
-                potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
-                if os.path.exists(potential_path):
-                    print(f"✅ Found file via metadata match: {potential_path}")
-                    return potential_path, entry
-
-        print("⚠️ No direct match. Checking variants (Universal Fallback v15)...")
-        # 3. Fallback: Search by ID (if ID is in filename)
-        for entry in entries:
-            vid_id = entry.get('id')
-            if vid_id:
-                print(f"🔍 Look for ID: *{vid_id}*")
-                pattern = os.path.join(download_dir, f'*{vid_id}*.*')
-                id_files = [f for f in glob.glob(pattern) if not f.endswith('.part') and not f.endswith('.ytdl')]
-                if id_files:
-                    best_id_file = max(id_files, key=os.path.getmtime)
-                    print(f"✅ Found file via ID match: {best_id_file}")
-                    return best_id_file, entry
-
-        # 4. Fallback: Recent file (Universal)
-        possible_extensions = [file_format, 'webm', 'm4a', 'opus', 'mp4', 'mkv', 'mp3']
-        recent_candidates = []
-        
-        now = time.time()
-        for ext in possible_extensions:
-            pattern = os.path.join(download_dir, f'*.{ext}')
-            for f in glob.glob(pattern):
-                # Window: 5 minutes (300s)
-                if now - os.path.getmtime(f) < 300:
-                    recent_candidates.append(f)
-            
-        if recent_candidates:
-            best_candidate = max(recent_candidates, key=os.path.getmtime)
-            print(f"✅ Found file via Recent Fallback: {best_candidate}")
-            return best_candidate, entries[0]
-            
-        return None, info
-
     def _get_ffmpeg_args(self, quality: str, file_format: str) -> list:
         """Получить аргументы ffmpeg на основе качества и формата"""
         if file_format != 'flac':
@@ -286,11 +102,10 @@ class DownloadService:
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
         ydl_opts = {
-            'format': 'bestaudio/best', # Первый этап: стандартное аудио
+            # Принимаем любое лучшее аудио. 'ba' - сокращение от 'bestaudio'
+            'format': 'ba/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
-            'cachedir': False,
-            'source_address': '0.0.0.0', # Принудительно IPv4 для Railway
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': file_format,
@@ -302,91 +117,83 @@ class DownloadService:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            # Используем default_search только если нет прямого URL от API
             'default_search': 'ytsearch1' if not youtube_url else None,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'ios'],
+                    # Используем mweb в приоритете и web_music как наиболее стабильный для аудио
+                    'player_client': ['mweb', 'web_music', 'web', 'ios', 'android'],
                     'skip': ['translated_subs'],
-                    'include_dash_manifest': True,
-                    'include_hls_manifest': True,
+                    # Используем mweb для автоматического извлечения PO-токена
+                    'po_token': 'mweb',
                 }
             },
-            'format_sort': ['acodec:opus', 'res', 'lang', 'quality'],
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
             'referer': 'https://www.google.com/',
             'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'age_limit': 99,
+            'age_limit': 99,  # Обход возрастных ограничений
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
+        # Используем URL от API если доступен, иначе поисковый запрос
         download_target = youtube_url if youtube_url else search_query
-        loop = asyncio.get_event_loop()
+        
+        has_cookies = os.path.exists(self.cookies_path)
+        api_mode = " (via API)" if youtube_url else ""
+        print(f"🚀 Starting download attempt 1{api_mode} (Cookies: {'YES' if has_cookies else 'NO'})")
+        
         try:
-            # v15: Unconditional Fallback Chain
-            strategies = [
-                # 1. Mobile (Standard)
-                {"player_client": ["android", "ios"]},
-                # 2. Music Web (Music specific)
-                {"player_client": ["web_music", "web", "mweb", "android"]},
-                # 3. TV (Legacy / SABR fix)
-                {"player_client": ["tv", "web_embedded", "web"]},
-                # 4. Nuclear (No Cookies)
-                {"player_client": ["web_embedded", "web", "mweb"], "no_cookies": True}
-            ]
+            # Attempt 1: Standard comprehensive list
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                self._download_sync, 
+                download_target,  # Используем URL от API или поисковый запрос
+                ydl_opts,
+                file_format
+            )
             
-            last_result = None
-            for i, strategy in enumerate(strategies, 1):
-                current_opts = ydl_opts.copy()
-                current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
-                
-                if strategy.get('no_cookies'):
-                    current_opts['cookiefile'] = None
-                
-                # If we already failed once, switch target to BROAD SEARCH for alternatives
-                if i > 1:
-                    if download_target != search_query:
-                        print(f"🔄 Switching from direct URL to search fallback: {search_query}")
-                        download_target = search_query
-
-                    current_opts['default_search'] = 'ytsearch5'
-                    current_opts['noplaylist'] = False
-                    current_opts['max_downloads'] = 1
-                    current_opts['ignoreerrors'] = True
-                    safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
-                    current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
-
-                # v18: Broaden format if audio-only fails (TV & Nuclear steps)
-                if i >= 3:
-                    print(f"☢️ Step {i}: Enabling ultra-broad format fallback ('best')")
-                    current_opts['format'] = 'best'
-                    current_opts['format_sort'] = [] # Clear sort to prevent filtering
-                    current_opts['ignore_no_formats_error'] = True
-
-                print(f"📡 Strategy {i}/4: Trying {strategy}")
-                last_result = await loop.run_in_executor(None, self._download_sync, download_target, current_opts, file_format)
-                
-                if self._is_error_fatal(last_result):
-                    print(f"✨ Step {i} SUCCEEDED!")
-                    return last_result
-                
-                # Extract error string safely (v17 crash fix)
-                err_str = last_result.get('error') if isinstance(last_result, dict) else str(last_result)
-                if not err_str or err_str == 'None': err_str = "Unknown download failure"
-                
-                print(f"❌ Step {i} failed. Reason: {err_str}")
-                
-                # If we have a failed ID, blacklist it for next attempts
-                failed_id = self._extract_youtube_id(err_str)
-                if failed_id:
-                    print(f"🚫 Blacklisting ID {failed_id} for next steps")
-                    ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-                
-                await asyncio.sleep(1)
-
-            return last_result
+            # Check for bot detection
+            if result and isinstance(result, dict) and 'error' in result:
+                err = result['error']
+                if "confirm you're not a bot" in err or "Sign in" in err or "403" in err:
+                    print(f"⚠️ Bot detection triggered on Attempt 1. Retrying with Attempt 2 (Mobile only)...")
+                    # Attempt 2: Purely mobile (harder to detect)
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['android', 'ios']
+                    
+                    result = await loop.run_in_executor(
+                        None, 
+                        self._download_sync, 
+                        download_target,  # Используем тот же target
+                        ydl_opts,
+                        file_format
+                    )
+                    
+                    # Attempt 3: TV and Embedded (sometimes less restricted)
+                    if result and isinstance(result, dict) and 'error' in result:
+                        err = result['error']
+                        if "confirm you're not a bot" in err or "Sign in" in err:
+                            print(f"⚠️ Bot detection triggered on Attempt 2. Retrying with Attempt 3 (TV/Embedded)...")
+                            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded', 'tv']
+                            
+                            result = await loop.run_in_executor(
+                                None, 
+                                self._download_sync, 
+                                download_target,  # Используем тот же target
+                                ydl_opts,
+                                file_format
+                            )
+            
+            return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}
@@ -456,34 +263,51 @@ class DownloadService:
                 
                 if not info:
                     return None
-                    
-                file_path, valid_entry = self._resolve_downloaded_file(ydl, info, file_format, self.download_dir)
                 
-                # Update info with the actual track data
-                if valid_entry:
-                    info = valid_entry
-
                 title = info.get('title', 'Unknown')
                 duration = info.get('duration', 0)
                 
-                # Final verification
+                import glob
+                import time
+                
+                # 1. Пробуем предсказанный путь
+                base_path = ydl.prepare_filename(info)
+                file_path = os.path.splitext(base_path)[0] + f'.{file_format}'
+                
+                # 2. Если не найден, пробуем путь из метаданных yt-dlp
+                if not os.path.exists(file_path):
+                    actual_filename = info.get('_filename')
+                    if actual_filename:
+                        potential_path = os.path.splitext(actual_filename)[0] + f'.{file_format}'
+                        if os.path.exists(potential_path):
+                            file_path = potential_path
+                
+                # 3. Если всё еще не найден (самый надежный способ для сложных имен), 
+                # ищем файл с нужным форматом, созданный в последние 60 секунд
+                if not os.path.exists(file_path):
+                    pattern = os.path.join(self.download_dir, f'*.{file_format}')
+                    files = glob.glob(pattern)
+                    now = time.time()
+                    # Берем те, что созданы недавно
+                    recent_files = [f for f in files if now - os.path.getctime(f) < 60]
+                    if recent_files:
+                        # Берем самый новый из недавних
+                        file_path = max(recent_files, key=os.path.getctime)
+                
+                # 4. Проверяем финальный путь
                 file_size = 0
-                if file_path and os.path.exists(file_path):
+                if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
                 else:
+                    # Логируем неудачу для отладки
                     print(f"⚠️ Файл не найден после всех попыток: {file_path}")
-                    # Last ditch effort: ANY file in downloads
-                    import glob
-                    files = []
-                    for ext in [file_format, 'webm', 'm4a', 'opus', 'mp4']:
-                        pattern = os.path.join(self.download_dir, f'*.{ext}')
-                        files.extend(glob.glob(pattern))
-                    
-                    if files:
-                        file_path = max(files, key=os.path.getmtime)
+                    # Попробуем взять просто самый последний файл этого формата (крайняя мера)
+                    pattern = os.path.join(self.download_dir, f'*.{file_format}')
+                    all_files = glob.glob(pattern)
+                    if all_files:
+                        file_path = max(all_files, key=os.path.getctime)
                         file_size = os.path.getsize(file_path)
-                        print(f"🆘 Emergency recovery: Using {file_path}")
-
+                
                 return {
                     'file_path': file_path,
                     'title': title,
@@ -501,18 +325,13 @@ class DownloadService:
         ffmpeg_args = self._get_ffmpeg_args(quality, file_format)
         
         # Модифицируем шаблон имени файла чтобы избежать коллизий качества
-        # v13: Ограничиваем длину имени файла до 50 символов чтобы избежать OS Error
-        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])[:50]
+        safe_query = "".join([c if c.isalnum() or c in " -_" else "_" for c in search_query])
         out_tmpl = os.path.join(self.download_dir, f"{safe_query}_{quality}.%(ext)s")
         
         ydl_opts = {
-            'format': 'bestaudio/best', # Этап 1: Стандартное аудио
+            'format': 'bestaudio/best',
             'outtmpl': out_tmpl,
             'overwrites': True,
-            'cachedir': False,
-            'source_address': '0.0.0.0', # Принудительно IPv4 для Railway
-            'noplaylist': True,
-            'ignore_no_formats_error': True,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': file_format,
@@ -525,75 +344,34 @@ class DownloadService:
             'no_warnings': True,
             'extract_flat': False,
             'default_search': 'ytsearch1',
+            # Обход блокировки YouTube "Sign in to confirm you're not a bot"
+            # Удаляем жесткий user_agent для автоматического подбора под клиента
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'ios'],
-                    'skip': ['translated_subs'],
-                    'include_dash_manifest': True,
-                    'include_hls_manifest': True,
+                    'player_client': ['android'],
+                    'skip': ['hls', 'dash', 'translated_subs'],
+                    'include_dash_manifest': False,
+                    'include_hls_manifest': False,
                 }
             },
-            'format_sort': ['acodec:opus', 'res', 'lang', 'quality'],
-            'referer': 'https://www.google.com/',
-            'noproxy': True,
             'socket_timeout': 30,
             'retries': 5,
             'geo_bypass': True,
             'nocheckcertificate': True,
-            'age_limit': 99,
+            'age_limit': 99,  # Обход возрастных ограничений
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
         
-        loop = asyncio.get_event_loop()
         try:
-            # v18: Unconditional Fallback Chain for Queries
-            strategies = [
-                {"player_client": ["android", "ios"]},
-                {"player_client": ["web_music", "web", "mweb", "android"]},
-                {"player_client": ["tv", "web_embedded", "web"]},
-                {"player_client": ["web_embedded", "web", "mweb"], "no_cookies": True}
-            ]
-            
-            last_result = None
-            for i, strategy in enumerate(strategies, 1):
-                current_opts = ydl_opts.copy()
-                current_opts['extractor_args'] = {'youtube': {k: v for k, v in strategy.items() if k != 'no_cookies'}}
-                
-                if strategy.get('no_cookies'):
-                    current_opts['cookiefile'] = None
-                
-                if i > 1:
-                    current_opts['default_search'] = 'ytsearch5'
-                    current_opts['noplaylist'] = False
-                    current_opts['max_downloads'] = 1
-                    current_opts['ignoreerrors'] = True
-                    current_opts['outtmpl'] = os.path.join(self.download_dir, f"{safe_query}_%(id)s_{quality}.%(ext)s")
-
-                # v18: Broaden format for query fallback too
-                if i >= 3:
-                    current_opts['format'] = 'best'
-                    current_opts['format_sort'] = []
-                    current_opts['ignore_no_formats_error'] = True
-
-                print(f"📡 Query Strategy {i}/4: Trying strategy {strategy}")
-                last_result = await loop.run_in_executor(None, self._download_sync, search_query, current_opts, file_format)
-                
-                if self._is_error_fatal(last_result):
-                    print(f"✨ Query Strategy {i} SUCCEEDED!")
-                    return last_result
-                
-                # Safe error extraction
-                err_str = last_result.get('error') if isinstance(last_result, dict) else str(last_result)
-                if not err_str or err_str == 'None': err_str = "Unknown query failure"
-                
-                if isinstance(last_result, dict) and 'error' in last_result:
-                    failed_id = self._extract_youtube_id(err_str)
-                    if failed_id:
-                        ydl_opts['match_filter'] = self._create_blacklist_filter(failed_id)
-                
-                await asyncio.sleep(1)
-
-            return last_result
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                self._download_sync, 
+                search_query, 
+                ydl_opts,
+                file_format
+            )
+            return result
         except Exception as e:
             print(f"❌ Ошибка скачивания {search_query}: {e}")
             return {'error': str(e)}

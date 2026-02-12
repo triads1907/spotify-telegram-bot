@@ -99,19 +99,6 @@ class DeepSyncService:
                     msg_data = resp.json().get('result', {})
                     new_msg_id = msg_data.get('message_id')
                     
-                    # Фильтрация: игнорируем маркеры бэкапа базы данных
-                    text_content = msg_data.get('text', '') or msg_data.get('caption', '')
-                    if "SpotifyMusicClone pinned a file" in text_content:
-                        if msg_id % 100 == 0:
-                            print(f"ℹ️  [SYNC] Skipping DB backup marker at ID {msg_id}", flush=True)
-                        # Удаляем временный дубликат и продолжаем
-                        if new_msg_id:
-                            httpx.post(f"{self.base_url}/deleteMessage", data={
-                                'chat_id': self.channel_id,
-                                'message_id': new_msg_id
-                            })
-                        continue
-
                     audio = msg_data.get('audio')
                     if audio:
                         file_id = audio.get('file_id')

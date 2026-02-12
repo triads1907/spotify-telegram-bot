@@ -145,34 +145,19 @@ class TelegramStorageService:
             file_size = os.path.getsize(file_path)
             print(f"📤 Uploading document to Telegram: {os.path.basename(file_path)} ({file_size / 1024:.2f} KB)")
             
-            # Отправляем файл как document в канал через HTTP API (с повторными попытками)
-            import time
-            max_retries = 3
-            last_error = None
-            
-            for attempt in range(max_retries):
-                try:
-                    with open(file_path, 'rb') as doc_file:
-                        files = {'document': doc_file}
-                        data = {'chat_id': self.channel_id}
-                        if caption:
-                            data['caption'] = caption
-                        
-                        response = httpx.post(
-                            f"{self.base_url}/sendDocument",
-                            files=files,
-                            data=data,
-                            timeout=120.0
-                        )
-                    break # Успех
-                except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
-                    last_error = e
-                    print(f"⚠️ Upload attempt {attempt + 1} failed: {e}. Retrying in 5s...")
-                    time.sleep(5)
-            else:
-                # Если все попытки провалены
-                print(f"❌ All {max_retries} upload attempts failed: {last_error}")
-                return None
+            # Отправляем файл как document в канал через HTTP API
+            with open(file_path, 'rb') as doc_file:
+                files = {'document': doc_file}
+                data = {'chat_id': self.channel_id}
+                if caption:
+                    data['caption'] = caption
+                
+                response = httpx.post(
+                    f"{self.base_url}/sendDocument",
+                    files=files,
+                    data=data,
+                    timeout=120.0
+                )
             
             if response.status_code == 200:
                 result = response.json()
