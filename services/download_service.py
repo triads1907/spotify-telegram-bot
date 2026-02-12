@@ -196,8 +196,9 @@ class DownloadService:
         try:
             loop = asyncio.get_event_loop()
             
-            # Попытка 1: Мобильные клиенты (iOS/Android)
-            print(f"🚀 Attempt 1: Using Mobile clients (ios, android)...")
+            # Попытка 1: Широкий набор клиентов (Web Music, iOS, Android)
+            print(f"🚀 Attempt 1: Using mixed clients (web_music, ios, android, mweb)...")
+            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'ios', 'android', 'mweb']
             result = await loop.run_in_executor(
                 None, 
                 self._download_sync, 
@@ -216,13 +217,15 @@ class DownloadService:
                     "sign in", 
                     "403", 
                     "page needs to be reloaded",
-                    "forbidden"
+                    "forbidden",
+                    "failed to extract any player response",
+                    "failed to extract player response"
                 ])
 
             if is_blocked(result):
-                # Попытка 2: Музыкальные и мобильный веб (web_music, mweb)
-                print(f"⚠️ Attempt 1 blocked/failed. Trying Attempt 2: Music & Mobile Web...")
-                ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
+                # Попытка 2: Только мобильные нативные (иногда помогают при ошибках плеера)
+                print(f"⚠️ Attempt 1 blocked/failed. Trying Attempt 2: Native Mobile only (ios, android)...")
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
                 
                 result = await loop.run_in_executor(
                     None, 
@@ -233,8 +236,8 @@ class DownloadService:
                 )
                 
                 if is_blocked(result):
-                    # Попытка 3: TV и встроенные плееры (иногда меньше ограничений)
-                    print(f"⚠️ Attempt 2 blocked/failed. Trying Attempt 3: TV & Embedded...")
+                    # Попытка 3: TV и встроенные плееры (максимальная выносливость)
+                    print(f"⚠️ Attempt 2 blocked/failed. Trying Attempt 3: TV & Embedded (tv, web_embedded)...")
                     ydl_opts['extractor_args']['youtube']['player_client'] = ['tv', 'web_embedded']
                     
                     result = await loop.run_in_executor(
