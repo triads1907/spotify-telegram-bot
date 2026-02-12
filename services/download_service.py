@@ -141,15 +141,34 @@ class DownloadService:
             else:
                 print(f"⚠️ API search failed, falling back to yt-dlp search")
         
-        # Модифицируем шаблон имени файла чтобы избежать коллизий качества
+        # Используем URL от API если доступен, иначе поисковый запрос
+        download_target = youtube_url if youtube_url else search_query
+        
+        # Генерируем опции для скачивания
+        ydl_opts = self._get_base_ydl_opts(artist, track_name, quality, file_format, ffmpeg_args)
+        if youtube_url:
+            ydl_opts['default_search'] = None
+        
+        has_cookies = os.path.exists(self.cookies_path)
+        print(f"🚀 Starting download (Cookies: {'YES' if has_cookies else 'NO'})")
+        
+        try:
+            return await self._download_with_rotation(download_target, search_query, ydl_opts, file_format, youtube_url)
+        except Exception as e:
+            print(f"❌ Ошибка в search_and_download: {e}")
+            return {'error': str(e)}
+
+    def _get_base_ydl_opts(self, artist: str, track_name: str, quality: str, file_format: str, ffmpeg_args: list) -> dict:
+        """
+        Базовые настройки yt-dlp для всех видов скачивания
+        """
         safe_name = "".join([c if c.isalnum() or c in " -_" else "_" for c in f"{artist} - {track_name}"])
         out_tmpl = os.path.join(self.download_dir, f"{safe_name}_{quality}.%(ext)s")
         
-        ydl_opts = {
-            # Принимаем любое лучшее аудио. 'ba' - сокращение от 'bestaudio'
-            'format': 'bestaudio/best', # Более полное описание формата
-            'js_runtimes': {'node': {}},   # Явно указываем Node.js для решения сигнатур
-            'remote_components': 'ejs:github', # Позволяет скачивать актуальные скрипты-решатели
+        return {
+            'format': 'bestaudio/best',
+            'js_runtimes': {'node': {}},
+            'remote_components': 'ejs:github',
             'outtmpl': out_tmpl,
             'overwrites': True,
             'postprocessors': [{
@@ -157,148 +176,94 @@ class DownloadService:
                 'preferredcodec': file_format,
                 'preferredquality': quality if file_format == 'mp3' else None,
             }],
-            'postprocessor_args': {
-                'ffmpeg': ffmpeg_args
-            } if ffmpeg_args else {},
+            'postprocessor_args': {'ffmpeg': ffmpeg_args} if ffmpeg_args else {},
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            # Используем default_search только если нет прямого URL от API
-            'default_search': 'ytsearch1' if not youtube_url else None,
+            'default_search': 'ytsearch1',
             'extractor_args': {
                 'youtube': {
-                    # Начинаем с самых стабильных мобильных плееров
-                    'player_client': ['ios', 'android'],
+                    'player_client': ['web_music', 'mweb'],
                     'skip': ['translated_subs'],
                 }
             },
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
             },
             'referer': 'https://www.google.com/',
             'noproxy': True,
-            'socket_timeout': 60,  # Увеличиваем таймаут
-            'retries': 10,         # Больше попыток
+            'socket_timeout': 60,
+            'retries': 10,
             'geo_bypass': True,
-            'nocheckcertificate': True,
-            'age_limit': 99,  # Обход возрастных ограничений
+            'age_limit': 99,
             'cookiefile': self.cookies_path if os.path.exists(self.cookies_path) else None,
         }
+
+    async def download_from_url(self, youtube_url: str, quality: str = '192', file_format: str = 'mp3', artist: str = "Unknown", track_name: str = "Track") -> Optional[Dict]:
+        """
+        Скачивание конкретного видео по URL с использованием ротации
+        """
+        ffmpeg_args = self._get_ffmpeg_args(quality, file_format)
+        search_query = f"{artist} - {track_name}"
         
-        # Используем URL от API если доступен, иначе поисковый запрос
-        download_target = youtube_url if youtube_url else search_query
+        ydl_opts = self._get_base_ydl_opts(artist, track_name, quality, file_format, ffmpeg_args)
+        ydl_opts['default_search'] = None # Прямой URL, поиск не нужен
         
-        has_cookies = os.path.exists(self.cookies_path)
-        api_mode = " (via API)" if youtube_url else ""
-        print(f"🚀 Starting download attempt 1{api_mode} (Cookies: {'YES' if has_cookies else 'NO'})")
+        return await self._download_with_rotation(youtube_url, search_query, ydl_opts, file_format, youtube_url)
+
+    async def _download_with_rotation(self, download_target: str, search_query: str, ydl_opts: dict, file_format: str, youtube_url: Optional[str] = None) -> Optional[Dict]:
+        """
+        Внутренняя логика ротации клиентов (4 попытки + поиск альтернатив)
+        """
+        loop = asyncio.get_event_loop()
         
-        try:
-            loop = asyncio.get_event_loop()
+        def is_blocked(res):
+            if not res or not isinstance(res, dict) or 'error' not in res:
+                return False
+            e = res['error'].lower()
+            return any(msg in e for msg in [
+                "confirm you're not a bot", "sign in", "403", "page needs to be reloaded",
+                "forbidden", "failed to extract any player response", "failed to extract player response",
+                "innertube_context", "extractor error", "unsupported url",
+                "requested format is not available", "video unavailable", "this video is not available"
+            ])
+
+        # Попытка 1: Музыкальные и мобильный веб
+        print(f"🚀 Attempt 1: Using Music & MWeb (Standard for audio)...")
+        ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
+        result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+
+        if is_blocked(result):
+            # Попытка 2: Нативные мобильные (No Cookies)
+            print(f"⚠️ Attempt 1 failed. Trying Attempt 2: Native Mobile (No Cookies)...")
+            ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
+            orig_cookies = ydl_opts.get('cookiefile')
+            ydl_opts['cookiefile'] = None
+            result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+            ydl_opts['cookiefile'] = orig_cookies
             
-            # Проверка на блокировку или технические ошибки
-            def is_blocked(res):
-                if not res or not isinstance(res, dict) or 'error' not in res:
-                    return False
-                e = res['error'].lower()
-                return any(msg in e for msg in [
-                    "confirm you're not a bot", 
-                    "sign in", 
-                    "403", 
-                    "page needs to be reloaded",
-                    "forbidden",
-                    "failed to extract any player response",
-                    "failed to extract player response",
-                    "innertube_context",
-                    "extractor error",
-                    "unsupported url",
-                    "requested format is not available",
-                    "video unavailable",
-                    "this video is not available"
-                ])
-
-            # Попытка 1: Музыкальные и мобильный веб (самые сбалансированные для музыки)
-            print(f"🚀 Attempt 1: Using Music & MWeb (Standard for audio)...")
-            ydl_opts['extractor_args']['youtube']['player_client'] = ['web_music', 'mweb']
-            result = await loop.run_in_executor(
-                None, 
-                self._download_sync, 
-                download_target,
-                ydl_opts,
-                file_format
-            )
-
             if is_blocked(result):
-                # Попытка 2: Нативные мобильные (часто помогают при блоках, НО плохо дружат с куками в yt-dlp)
-                # Поэтому пробуем их БЕЗ куков если с куками не вышло
-                print(f"⚠️ Attempt 1 failed ({result.get('error')[:50] if result else 'N/A'}). Trying Attempt 2: Native Mobile (No Cookies)...")
-                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android']
-                
-                # Сохраняем и временно убираем куки для этой попытки
-                original_cookiefile = ydl_opts.get('cookiefile')
-                ydl_opts['cookiefile'] = None
-                
-                result = await loop.run_in_executor(
-                    None, 
-                    self._download_sync, 
-                    download_target,
-                    ydl_opts,
-                    file_format
-                )
-                
-                # Возвращаем куки назад для следующих попыток
-                ydl_opts['cookiefile'] = original_cookiefile
+                # Попытка 3: Встроенные плееры
+                print(f"⚠️ Attempt 2 failed. Trying Attempt 3: Embedded only...")
+                ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded']
+                result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
                 
                 if is_blocked(result):
-                    # Попытка 3: Встроенные плееры (web_embedded)
-                    print(f"⚠️ Attempt 2 failed. Trying Attempt 3: Embedded only...")
-                    ydl_opts['extractor_args']['youtube']['player_client'] = ['web_embedded']
-                    
-                    result = await loop.run_in_executor(
-                        None, 
-                        self._download_sync, 
-                        download_target,
-                        ydl_opts,
-                        file_format
-                    )
-                    
-                    if is_blocked(result):
-                        # Попытка 4: Стандартный веб (крайний случай)
-                        print(f"⚠️ Attempt 3 failed. Trying Attempt 4: Standard Web...")
-                        ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
-                        
-                        result = await loop.run_in_executor(
-                            None, 
-                            self._download_sync, 
-                            download_target,
-                            ydl_opts,
-                            file_format
-                        )
-            
-            # --- ФИНАЛЬНЫЙ FALLBACK: Поиск альтернатив если конкретный URL не сработал ---
-            if is_blocked(result) and youtube_url:
-                print(f"🔄 Specific URL failed all attempts. Falling back to YouTube Search for alternatives...")
-                ydl_opts['default_search'] = 'ytsearch1'
-                # Сбрасываем клиентов на оптимальный набор для поиска
-                ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'web_music']
-                
-                result = await loop.run_in_executor(
-                    None, 
-                    self._download_sync, 
-                    search_query, # Используем текстовый поиск вместо URL
-                    ydl_opts,
-                    file_format
-                )
-            
-            return result
-            
-            return result
-        except Exception as e:
-            print(f"❌ Ошибка скачивания {search_query}: {e}")
-            return {'error': str(e)}
-    
+                    # Попытка 4: Стандартный веб
+                    print(f"⚠️ Attempt 3 failed. Trying Attempt 4: Standard Web...")
+                    ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
+                    result = await loop.run_in_executor(None, self._download_sync, download_target, ydl_opts, file_format)
+
+        # ФИНАЛЬНЫЙ FALLBACK: Поиск альтернатив
+        if is_blocked(result) and youtube_url:
+            print(f"🔄 Specific URL failed. Falling back to Search for alternatives...")
+            ydl_opts['default_search'] = 'ytsearch1'
+            ydl_opts['extractor_args']['youtube']['player_client'] = ['ios', 'android', 'web_music']
+            result = await loop.run_in_executor(None, self._download_sync, search_query, ydl_opts, file_format)
+        
+        return result
+        
     async def get_metadata_only(self, artist: str, track_name: str) -> Optional[Dict]:
         """
         Только поиск метаданных (без скачивания)
