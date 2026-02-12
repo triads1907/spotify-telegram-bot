@@ -14,10 +14,6 @@ if not TELEGRAM_BOT_TOKEN:
     print("💡 Создайте .env файл или установите переменную окружения")
     raise ValueError("❌ TELEGRAM_BOT_TOKEN обязателен для работы бота!")
 
-# Администраторы бота (ID пользователей через запятую)
-ADMIN_IDS = [int(x.strip()) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
-print(f"👥 Admin IDs: {ADMIN_IDS}")
-
 # База данных
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Используем абсолютный путь для SQLite (в папке data для Railway)

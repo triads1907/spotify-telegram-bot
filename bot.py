@@ -160,10 +160,6 @@ def main():
     application.add_handler(CommandHandler("clearhistory", clear_history_command))
     application.add_handler(CommandHandler("settings", settings_command))
     
-    # Админ-команды
-    from handlers.admin import backup_command
-    application.add_handler(CommandHandler("backup", backup_command))
-    
     # ========== CONVERSATION HANDLER ДЛЯ СОЗДАНИЯ ПЛЕЙЛИСТА ==========
     
     create_playlist_conv = ConversationHandler(
