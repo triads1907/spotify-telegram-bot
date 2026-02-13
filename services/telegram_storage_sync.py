@@ -102,11 +102,31 @@ class DeepSyncService:
                     new_msg_id = msg_data.get('message_id')
                     
                     audio = msg_data.get('audio')
-                    if audio:
-                        file_id = audio.get('file_id')
+                    document = msg_data.get('document')
+                    
+                    # Обрабатываем и Audio, и Document (если это аудио-файл)
+                    is_audio_doc = False
+                    if document:
+                        mime = document.get('mime_type', '')
+                        filename = document.get('file_name', '').lower()
+                        if 'audio' in mime or filename.endswith(('.mp3', '.m4a', '.flac', '.wav', '.ogg')):
+                            is_audio_doc = True
+                    
+                    if audio or is_audio_doc:
+                        # Извлекаем данные
+                        target = audio if audio else document
+                        file_id = target.get('file_id')
                         caption = msg_data.get('caption', '')
-                        title = audio.get('title', 'Unknown')
-                        artist = audio.get('performer', 'Unknown')
+                        
+                        # Для Audio есть артист/название, для Document берем из имени файла/капшена
+                        title = target.get('title') or target.get('file_name', 'Unknown')
+                        artist = target.get('performer', 'Unknown')
+                        
+                        # Если это документ, пробуем распарсить имя файла "Artist - Title.mp3"
+                        if is_audio_doc and " - " in title:
+                            parts = title.rsplit('.', 1)[0].split(' - ', 1)
+                            if len(parts) == 2:
+                                artist, title = parts[0], parts[1]
                         
                         if caption and " - " in caption:
                             clean_caption = caption.replace("🎵", "").strip()
@@ -115,27 +135,23 @@ class DeepSyncService:
                                 artist = parts[0].strip()
                                 title = parts[1].strip()
                         
-                        track_id = audio.get('file_unique_id', f"sync_{msg_id}")
+                        track_id = target.get('file_unique_id', f"sync_{msg_id}")
                         
                         image_url = None
                         
-                        # ПРИОРИТЕТ 1: Spotify Metadata (Надежно и качественно)
+                        # ПРИОРИТЕТ 1: Spotify Metadata
                         if self.spotify:
                             try:
-                                # Ищем трек в Spotify
                                 search_query = f"{artist} {title}"
                                 results = await self.spotify.search_track(search_query)
                                 if results and len(results) > 0:
                                     best_match = results[0]
                                     image_url = best_match.get('image_url')
-                                    # ОПЦИОНАЛЬНО: Можно обновить track_id на реальный Spotify ID
-                                    # Но это может нарушить связь с существующими файлами, если логика жесткая.
-                                    # DatabaseManager.save_telegram_file уже умеет линковать по имени!
                                     print(f"🎨 [SYNC] Found cover art for {artist} - {title}", flush=True)
                             except Exception as e:
                                 print(f"⚠️ [SYNC] Spotify metadata fetch failed: {e}", flush=True)
 
-                        # ПРИОРИТЕТ 2: YouTube Metadata (Через DownloadService) - Устарело, ненадежно
+                        # ПРИОРИТЕТ 2: YouTube Metadata
                         if not image_url and self.downloader:
                             metadata = await self.downloader.get_metadata_only(artist, title)
                             if metadata:
@@ -144,7 +160,7 @@ class DeepSyncService:
                         await self.db.save_telegram_file(
                             track_id=track_id,
                             file_id=file_id,
-                            file_size=audio.get('file_size'),
+                            file_size=target.get('file_size'),
                             artist=artist,
                             track_name=title,
                             image_url=image_url
@@ -168,8 +184,8 @@ class DeepSyncService:
                 else:
                     consecutive_errors += 1
                     
-                if consecutive_errors > 200:
-                    print(f"ℹ️  [SYNC] Reached sparse history at ID {msg_id}. Stopping.", flush=True)
+                if consecutive_errors > 500:
+                    print(f"ℹ️  [SYNC] Reached sparse history at ID {msg_id} (500 consecutive gaps). Stopping.", flush=True)
                     break
                     
             except Exception as e:
