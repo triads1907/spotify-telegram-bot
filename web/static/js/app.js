@@ -26,14 +26,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (userData) {
         loadPlaylists();
+
+        // Если мы уже залогинены (userData из localStorage), но нет нового токена в URL
+        // запрашиваем последнее состояние воспроизведения с сервера
+        const urlParams = new URLSearchParams(window.location.search);
+        if (!urlParams.get('auth')) {
+            fetchPlaybackState();
+        }
     }
 
     // Backup БД при закрытии/обновлении страницы
     window.addEventListener('beforeunload', function (e) {
         // Синхронизируем положение плеера перед уходом (принудительно)
         if (userData && currentTrack) {
-            lastSyncTime = 0;
-            syncPlayback();
+            syncPlayback(true);
         }
 
         // Отправляем запрос на backup (используем sendBeacon для надежности)
@@ -91,6 +97,21 @@ function initializeViewToggle() {
 }
 
 // Auth Logic
+async function fetchPlaybackState() {
+    if (!userData) return;
+    try {
+        const response = await fetch('/api/playback/state', {
+            headers: { 'X-User-ID': userData.id.toString() }
+        });
+        const data = await response.json();
+        if (data.success && data.state && data.state.track) {
+            resumeLastPlayback(data.state);
+        }
+    } catch (error) {
+        console.error('Fetch playback state error:', error);
+    }
+}
+
 async function checkAuthToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const hostToken = urlParams.get('auth');
@@ -136,30 +157,40 @@ async function resumeLastPlayback(state) {
 
     console.log(`🎵 Resuming last playback: ${track.artist} - ${track.name} at ${position}s`);
 
-    // Подготавливаем плеер, но не запускаем автоплей сразу (браузеры могут блокировать)
-    // Мы загружаем метаданные, чтобы пользователь видел, на чем остановился
+    // Подготавливаем плеер
     currentTrack = track;
     updatePlayerUI(track);
 
     // Подгружаем аудио
-    await playFromYouTube(track, false); // false = don't auto-play if blocked
+    await playFromYouTube(track, false); // false = don't auto-play
 
-    // Устанавливаем время
+    // Устанавливаем время только когда аудио готово
     if (position > 0) {
-        audioPlayer.currentTime = position;
+        const onMetadataLoaded = () => {
+            audioPlayer.currentTime = position;
+            console.log(`⏱️ Position set to ${position}s`);
+            audioPlayer.removeEventListener('loadedmetadata', onMetadataLoaded);
+        };
+
+        if (audioPlayer.readyState >= 1) { // 1 = HAVE_METADATA
+            audioPlayer.currentTime = position;
+        } else {
+            audioPlayer.addEventListener('loadedmetadata', onMetadataLoaded);
+        }
     }
 
-    showNotification(`Resumed: ${track.name} (${formatTime(position)})`, 'info');
+    showNotification(`Last played: ${track.name}`, 'info');
 }
 
 let lastSyncTime = 0;
-function syncPlayback() {
-    if (!userData || !currentTrack || audioPlayer.paused) return;
+function syncPlayback(force = false) {
+    if (!userData || !currentTrack) return;
+    if (audioPlayer.paused && !force) return;
 
     const currentTime = Math.floor(audioPlayer.currentTime);
 
-    // Синхронизируем раз в 10 секунд
-    if (Date.now() - lastSyncTime < 10000) return;
+    // Синхронизируем раз в 10 секунд (если не принудительно)
+    if (!force && Date.now() - lastSyncTime < 10000) return;
 
     lastSyncTime = Date.now();
 
@@ -481,8 +512,7 @@ function initializePlayer() {
         updatePlayButton(false);
         // Немедленная синхронизация при паузе
         if (userData && currentTrack) {
-            lastSyncTime = 0; // Сброс таймера для принудительной отправки
-            syncPlayback();
+            syncPlayback(true);
         }
     });
 
