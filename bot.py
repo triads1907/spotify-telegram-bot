@@ -117,7 +117,7 @@ async def post_shutdown(application: Application):
     backup_service = application.bot_data.get('backup_service')
     if backup_service:
         print("🛑 Shutting down... Creating final database backup...", flush=True)
-        await backup_service.backup_to_telegram()
+        await backup_service.backup_to_telegram(force=True)
 
     # 2. Закрываем соединение с БД
     db = application.bot_data.get('db')

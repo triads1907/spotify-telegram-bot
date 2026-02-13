@@ -213,6 +213,11 @@ async def select_playlist_callback(update: Update, context: ContextTypes.DEFAULT
         playlist = await db.get_playlist(playlist_id)
         msg = f"✅ Добавлено в «{playlist.name}»" if lang == "ru" else f"✅ Added to \"{playlist.name}\""
         await query.answer(msg, show_alert=True)
+        
+        # Trigger immediate backup (Write-Through)
+        backup_service = context.bot_data.get('backup_service')
+        if backup_service:
+            context.application.create_task(backup_service.backup_to_telegram())
     else:
         msg = "⚠️ Трек уже есть в этом плейлисте" if lang == "ru" else "⚠️ Track already in this playlist"
         await query.answer(msg, show_alert=True)
