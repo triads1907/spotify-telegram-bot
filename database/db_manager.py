@@ -61,6 +61,32 @@ class DatabaseManager:
         self.async_session = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         print("🔌 Database engine re-initialized")
 
+    async def _migrate_schema(self, conn):
+        """Миграция схемы БД (добавление новых колонок)"""
+        try:
+            # Проверяем колонки в таблице users
+            columns = await conn.run_sync(
+                lambda request: {c['name'] for c in request.dialect.get_columns(request.connection, 'users')}
+            )
+            
+            # Добавляем last_track_id если нет
+            if 'last_track_id' not in columns:
+                print("🔄 [MIGRATE] Adding 'last_track_id' column to users table...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN last_track_id VARCHAR(255)"))
+                
+            # Добавляем last_position если нет
+            if 'last_position' not in columns:
+                print("🔄 [MIGRATE] Adding 'last_position' column to users table...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN last_position INTEGER DEFAULT 0"))
+                
+            # Добавляем notifications если нет (на случай старых версий)
+            if 'notifications' not in columns:
+                print("🔄 [MIGRATE] Adding 'notifications' column to users table...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN notifications INTEGER DEFAULT 1"))
+                
+        except Exception as e:
+            print(f"⚠️ Schema migration warning: {e}")
+
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         async with self.engine.begin() as conn:
@@ -74,6 +100,11 @@ class DatabaseManager:
                 Base.metadata.create_all(bind=sync_conn, checkfirst=True)
             
             await conn.run_sync(create_tables)
+            
+            # Запускаем миграции для существующих таблиц
+            from sqlalchemy import text
+            await self._migrate_schema(conn)
+            
         print("✅ База данных инициализирована (WAL mode enabled)")
     
     async def close(self):
