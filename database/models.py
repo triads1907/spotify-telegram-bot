@@ -28,7 +28,11 @@ class User(Base):
     language: Mapped[str] = mapped_column(String(5), default='ru')  # ru, en
     auto_delete: Mapped[bool] = mapped_column(Integer, default=0)  # SQLite не поддерживает Boolean
     format: Mapped[str] = mapped_column(String(10), default='mp3')  # mp3, flac
-    notifications: Mapped[bool] = mapped_column(Integer, default=1)
+    notifications: mapped_column(Integer, default=1)
+    
+    # Состояние плеера (Синхронизация прогресса)
+    last_track_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_position: Mapped[Optional[int]] = mapped_column(Integer, default=0) # в секундах
     
     # Статистика (Функция 9)
     total_downloads: Mapped[int] = mapped_column(Integer, default=0)

@@ -30,6 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Backup БД при закрытии/обновлении страницы
     window.addEventListener('beforeunload', function (e) {
+        // Синхронизируем положение плеера перед уходом (принудительно)
+        if (userData && currentTrack) {
+            lastSyncTime = 0;
+            syncPlayback();
+        }
+
         // Отправляем запрос на backup (используем sendBeacon для надежности)
         const backupUrl = '/api/backup-db';
 
@@ -107,6 +113,11 @@ async function checkAuthToken() {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 updateUserUI();
                 loadPlaylists();
+
+                // Обработка последнего состояния воспроизведения
+                if (data.playback_state && data.playback_state.track) {
+                    resumeLastPlayback(data.playback_state);
+                }
             } else {
                 showNotification('Invalid or expired token', 'error');
             }
@@ -115,6 +126,54 @@ async function checkAuthToken() {
             showNotification('Authentication failed', 'error');
         }
     }
+}
+
+async function resumeLastPlayback(state) {
+    if (!state || !state.track) return;
+
+    const track = state.track;
+    const position = state.position || 0;
+
+    console.log(`🎵 Resuming last playback: ${track.artist} - ${track.name} at ${position}s`);
+
+    // Подготавливаем плеер, но не запускаем автоплей сразу (браузеры могут блокировать)
+    // Мы загружаем метаданные, чтобы пользователь видел, на чем остановился
+    currentTrack = track;
+    updatePlayerUI(track);
+
+    // Подгружаем аудио
+    await playFromYouTube(track, false); // false = don't auto-play if blocked
+
+    // Устанавливаем время
+    if (position > 0) {
+        audioPlayer.currentTime = position;
+    }
+
+    showNotification(`Resumed: ${track.name} (${formatTime(position)})`, 'info');
+}
+
+let lastSyncTime = 0;
+function syncPlayback() {
+    if (!userData || !currentTrack || audioPlayer.paused) return;
+
+    const currentTime = Math.floor(audioPlayer.currentTime);
+
+    // Синхронизируем раз в 10 секунд
+    if (Date.now() - lastSyncTime < 10000) return;
+
+    lastSyncTime = Date.now();
+
+    fetch('/api/playback/sync', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userData.id.toString()
+        },
+        body: JSON.stringify({
+            track_id: currentTrack.id,
+            position: currentTime
+        })
+    }).catch(err => console.error('Sync error:', err));
 }
 
 function updateUserUI() {
@@ -327,7 +386,7 @@ async function playTrack(button, trackData = null) {
     }
 }
 
-async function playFromYouTube(track) {
+async function playFromYouTube(track, autoPlay = true) {
     try {
         showNotification('Preparing track...', 'info');
 
@@ -350,12 +409,18 @@ async function playFromYouTube(track) {
             currentTrack = track;
             // Используем прямую ссылку из Telegram
             audioPlayer.src = data.stream_url;
-            audioPlayer.play().catch(err => {
-                console.error('Play error:', err);
-                showNotification('Could not play track', 'error');
-            });
+
+            if (autoPlay) {
+                audioPlayer.play().catch(err => {
+                    console.error('Play error:', err);
+                    showNotification('Autoplay blocked', 'info');
+                });
+                updatePlayButton(true);
+            } else {
+                updatePlayButton(false);
+            }
+
             updatePlayerUI(track);
-            updatePlayButton(true);
 
             // Показываем статус кеширования
             if (data.cached) {
@@ -406,6 +471,19 @@ function initializePlayer() {
         const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
         progressSlider.value = progress;
         currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+
+        // Синхронизация с сервером
+        syncPlayback();
+    });
+
+    // Сохранение при паузе
+    audioPlayer.addEventListener('pause', () => {
+        updatePlayButton(false);
+        // Немедленная синхронизация при паузе
+        if (userData && currentTrack) {
+            lastSyncTime = 0; // Сброс таймера для принудительной отправки
+            syncPlayback();
+        }
     });
 
     // Установка общей длительности
