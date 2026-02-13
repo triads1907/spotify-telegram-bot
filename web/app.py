@@ -69,8 +69,8 @@ def run_background_sync():
         sync_service = DeepSyncService(get_telegram_storage(), db, download_service, spotify_service)
         
         # Запускаем синхронизацию
-        print(f"🛰️  [BACKGROUND] Triggering deep scan with 5000 messages...", flush=True)
-        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=5000))
+        print(f"🛰️  [BACKGROUND] Triggering deep scan (Full History)...", flush=True)
+        count = loop.run_until_complete(sync_service.run_deep_sync(range_size=100000))
         print(f"✅ [BACKGROUND-{threading.get_ident()}] Deep Sync completed! Found {count} tracks")
         
         loop.close()
@@ -144,7 +144,7 @@ def sync_deep():
         
         # Получаем параметры из запроса
         data = request.json or {}
-        range_size = data.get('range', 500)
+        range_size = data.get('range', 100000)
         
         count = loop.run_until_complete(sync_service.run_deep_sync(range_size=range_size))
         

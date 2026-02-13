@@ -23,11 +23,12 @@ class DeepSyncService:
         self.base_url = storage_service.base_url
         self.channel_id = storage_service.channel_id
         
-    async def run_deep_sync(self, range_size: int = 1000, start_id: Optional[int] = None):
+    async def run_deep_sync(self, range_size: int = 100000, start_id: Optional[int] = None):
         """
-        Просканировать последние N сообщений в канале и добавить найденные аудио в БД
+        Просканировать сообщения в канале и добавить найденные аудио в БД.
+        По умолчанию сканирует 100,000 сообщений (практически вся история).
         """
-        print(f"🕵️  [SYNC] Starting Deep Sync for last {range_size} messages...", flush=True)
+        print(f"🕵️  [SYNC] Starting Deep Sync for up to {range_size} messages...", flush=True)
         
         # 1. Получаем ID бота заранее (с retry для надежности)
         bot_id = None
