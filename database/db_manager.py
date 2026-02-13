@@ -433,7 +433,7 @@ class DatabaseManager:
     
     async def update_user_setting(self, user_id: int, setting_name: str, value):
         """Обновить настройку пользователя"""
-        async with self.get_session() as session:
+        async with self.async_session() as session:
             user = await session.get(User, user_id)
             if user:
                 setattr(user, setting_name, value)
@@ -443,7 +443,7 @@ class DatabaseManager:
 
     async def update_playback_state(self, user_id: int, track_id: str, position: int):
         """Обновить информацию о последнем прослушанном треке"""
-        async with self.get_session() as session:
+        async with self.async_session() as session:
             user = await session.get(User, user_id)
             if user:
                 user.last_track_id = track_id
@@ -454,7 +454,7 @@ class DatabaseManager:
 
     async def get_playback_state(self, user_id: int):
         """Получить информацию о последнем прослушанном треке"""
-        async with self.get_session() as session:
+        async with self.async_session() as session:
             user = await session.get(User, user_id)
             if user and user.last_track_id:
                 # Находим сам трек для метаданных
