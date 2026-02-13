@@ -17,7 +17,8 @@ let currentTrackIndex = -1;
 // Audio context for visualizer
 let audioCtx = null;
 let analyser = null;
-let visualizerInitialized = false;
+let source = null;
+let visualizerAnimation = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,9 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initializePlayer();
     initializePlaylists();
     initializeViewToggle();
-    loadLibrary();
-    initializeVisualizer();
+    initializeQueue();
     initializeKeyboardShortcuts();
+    loadLibrary();
 
     if (userData) {
         loadPlaylists();
@@ -275,22 +276,23 @@ function renderTrackCard(track, index, type = 'search') {
     return `
         <div class="track-card" data-index="${index}" data-type="${type}">
             <div class="track-image">
-                ${track.image ? `<img src="${track.image}" alt="${track.name}" loading="lazy" />` :
+                ${track.image ? `<img src="${track.image}" alt="${track.name}" />` :
             `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`}
-                <button class="card-play-btn" onclick="playTrack(this)">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                </button>
             </div>
             <div class="track-info">
                 <div class="track-name" title="${track.name}">${track.name}</div>
                 <div class="track-artist" title="${track.artist}">${track.artist}</div>
             </div>
             <div class="track-actions">
-                <button class="action-btn" onclick="addToQueue(this)" title="Add to Queue">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 18h8v-2H2v2z"/></svg>
+                <button class="action-btn" onclick="playTrack(this)">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
-                <button class="action-btn secondary" onclick="openDownloadModal(this)" title="Download">
+                <button class="action-btn secondary" onclick="openDownloadModal(this)">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+                </button>
+                <button class="action-btn secondary" onclick="addToQueue(${index}, '${type}')" title="Add to Queue">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 9H9V2H7v7H5L8 12l3-3zm3 2v-8h-2v8h2zm-12 9v2h20v-2H2zm16-7h-12v2h12v-2z" /></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 14px; height: 14px; margin-left: -10px;"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>
                 ${userData ? `<button class="action-btn secondary" onclick="openAddToPlaylistModal(${index}, '${type}')" title="Add to Playlist">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
@@ -304,52 +306,43 @@ function renderTrackCard(track, index, type = 'search') {
 async function playTrack(button, trackData = null) {
     let track, index, type;
 
-    // Resume if same track
-    if (!trackData && currentTrack && button) {
-        const card = button.closest('.track-card');
-        const cardIndex = parseInt(card.dataset.index);
-        const cardType = card.dataset.type;
-        const clickedTrack = cardType === 'library' ? libraryData[cardIndex] : resultsData[cardIndex];
-
-        if (currentTrack.id === clickedTrack.id) {
-            if (audioPlayer.paused) {
-                audioPlayer.play();
-                updatePlayButton(true);
-            } else {
-                audioPlayer.pause();
-                updatePlayButton(false);
-            }
-            return;
-        }
-    }
-
     if (trackData) {
+        // Called from playNext/playPrevious
         track = trackData;
     } else {
+        // Called from UI button click
         const card = button.closest('.track-card');
         index = parseInt(card.dataset.index);
         type = card.dataset.type;
         track = type === 'library' ? libraryData[index] : resultsData[index];
+
+        // Set current playlist and index
         currentPlaylist = type === 'library' ? libraryData : resultsData;
         currentTrackIndex = index;
     }
 
-    if (!track) return;
-
-    // Start Visualizer Context on user gesture
-    if (!visualizerInitialized) {
-        startVisualizer();
-        visualizerInitialized = true;
+    // Initialize visualizer context on first play
+    initializeVisualizer();
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
     }
 
-    // Try preview first
+    if (!track) return;
+
+    // Сначала пробуем Spotify preview (30 секунд)
     if (track.preview_url) {
         currentTrack = track;
         audioPlayer.src = track.preview_url;
-        audioPlayer.play().catch(err => playFromYouTube(track));
+        audioPlayer.play().catch(err => {
+            console.error('Preview play error:', err);
+            // Если preview не сработал, пробуем YouTube
+            playFromYouTube(track);
+        });
         updatePlayerUI(track);
         updatePlayButton(true);
+        updateQueueUI(); // Highlight active in queue
     } else {
+        // Нет preview - сразу используем YouTube
         playFromYouTube(track);
     }
 }
@@ -383,6 +376,7 @@ async function playFromYouTube(track) {
             });
             updatePlayerUI(track);
             updatePlayButton(true);
+            updateQueueUI(); // Highlight active in queue
 
             // Показываем статус кеширования
             if (data.cached) {
@@ -465,6 +459,157 @@ function initializePlayer() {
     document.getElementById('queueBtn').addEventListener('click', toggleQueue);
 }
 
+function initializeVisualizer() {
+    if (audioCtx) return;
+
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+
+        source = audioCtx.createMediaElementSource(audioPlayer);
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        drawVisualizer();
+    } catch (e) {
+        console.error('Visualizer initialization failed:', e);
+    }
+}
+
+function drawVisualizer() {
+    const canvas = document.getElementById('visualizer');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+        visualizerAnimation = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            barHeight = dataArray[i] / 2;
+
+            // Gradient for bars
+            const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+            gradient.addColorStop(0, '#1db954');
+            gradient.addColorStop(1, '#1ed760');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+            x += barWidth + 1;
+        }
+    };
+
+    draw();
+}
+
+function initializeQueue() {
+    // Initial UI update
+    updateQueueUI();
+}
+
+function toggleQueue() {
+    const panel = document.getElementById('queuePanel');
+    panel.classList.toggle('active');
+    if (panel.classList.contains('active')) {
+        updateQueueUI();
+    }
+}
+
+function updateQueueUI() {
+    const list = document.getElementById('queueList');
+    if (!list) return;
+
+    if (playbackQueue.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: var(--spotify-light-gray); padding: 20px; font-size: 13px;">Queue is empty</p>';
+        return;
+    }
+
+    list.innerHTML = playbackQueue.map((track, index) => `
+        <div class="queue-item ${currentTrack && currentTrack.id === track.id ? 'active' : ''}" onclick="playQueueItem(${index})">
+            <div class="queue-item-info">
+                <div class="queue-item-name">${track.name}</div>
+                <div class="queue-item-artist">${track.artist}</div>
+            </div>
+            <button class="control-btn" onclick="removeFromQueue(event, ${index})" style="padding: 4px;">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+        </div>
+    `).join('');
+}
+
+function playQueueItem(index) {
+    const track = playbackQueue[index];
+    playTrack(null, track);
+}
+
+function addToQueue(trackIndex, type = 'search') {
+    const track = type === 'library' ? libraryData[trackIndex] : resultsData[trackIndex];
+    if (!track) return;
+
+    // Avoid duplicates in queue
+    if (playbackQueue.some(t => t.id === track.id)) {
+        showNotification('Already in queue', 'info');
+        return;
+    }
+
+    playbackQueue.push(track);
+    updateQueueUI();
+    showNotification('Added to queue', 'success');
+}
+
+function removeFromQueue(event, index) {
+    event.stopPropagation();
+    playbackQueue.splice(index, 1);
+    updateQueueUI();
+}
+
+function initializeKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+        // Ignore if searching or in input
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+            return;
+        }
+
+        switch (e.code) {
+            case 'Space':
+                e.preventDefault();
+                document.getElementById('playBtn').click();
+                break;
+            case 'ArrowRight':
+                if (e.ctrlKey) playNext();
+                else audioPlayer.currentTime += 5;
+                break;
+            case 'ArrowLeft':
+                if (e.ctrlKey) playPrevious();
+                else audioPlayer.currentTime -= 5;
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                const volUp = Math.min(1, audioPlayer.volume + 0.1);
+                audioPlayer.volume = volUp;
+                document.querySelector('.volume-slider').value = volUp * 100;
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                const volDown = Math.max(0, audioPlayer.volume - 0.1);
+                audioPlayer.volume = volDown;
+                document.querySelector('.volume-slider').value = volDown * 100;
+                break;
+        }
+    });
+}
+
 function formatTime(seconds) {
     if (isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
@@ -504,24 +649,17 @@ function toggleShuffle() {
 }
 
 function playNext() {
-    // 1. Check if there's anything in the queue
-    if (playbackQueue.length > 0) {
-        const nextTrack = playbackQueue.shift();
-        updateQueueUI();
-        playTrack(null, nextTrack);
-        return;
-    }
-
-    // 2. Otherwise use the usual playlist logic
     if (currentPlaylist.length === 0) {
         showNotification('No playlist active', 'info');
         return;
     }
 
     if (isShuffleEnabled) {
+        // Random next track
         const randomIndex = Math.floor(Math.random() * currentPlaylist.length);
         currentTrackIndex = randomIndex;
     } else {
+        // Sequential next track
         currentTrackIndex = (currentTrackIndex + 1) % currentPlaylist.length;
     }
 
@@ -535,6 +673,7 @@ function playPrevious() {
         return;
     }
 
+    // Always go to previous track sequentially
     currentTrackIndex = (currentTrackIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
     const prevTrack = currentPlaylist[currentTrackIndex];
     playTrack(null, prevTrack);
@@ -802,146 +941,3 @@ document.querySelectorAll('input[name="format"]').forEach(radio => {
         }
     });
 });
-
-// Queue Management
-function addToQueue(button) {
-    const card = button.closest('.track-card');
-    const index = parseInt(card.dataset.index);
-    const type = card.dataset.type;
-    const track = type === 'library' ? libraryData[index] : resultsData[index];
-
-    if (track) {
-        playbackQueue.push(track);
-        updateQueueUI();
-        showNotification(`Added "${track.name}" to queue`, 'success');
-    }
-}
-
-function toggleQueue() {
-    const drawer = document.getElementById('queueDrawer');
-    drawer.classList.toggle('active');
-}
-
-function updateQueueUI() {
-    const list = document.getElementById('queueList');
-    if (playbackQueue.length === 0) {
-        list.innerHTML = '<p style="text-align: center; color: var(--spotify-light-gray); padding: 20px;">Queue is empty</p>';
-        return;
-    }
-
-    list.innerHTML = playbackQueue.map((track, i) => `
-        <div class="queue-item">
-            <div class="queue-track-info" onclick="playFromQueue(${i})">
-                <div class="queue-name">${track.name}</div>
-                <div class="queue-artist">${track.artist}</div>
-            </div>
-            <button class="remove-queue-btn" onclick="removeFromQueue(${i})">×</button>
-        </div>
-    `).join('');
-}
-
-function playFromQueue(index) {
-    const track = playbackQueue[index];
-    playbackQueue.splice(index, 1);
-    updateQueueUI();
-    playTrack(null, track);
-}
-
-function removeFromQueue(index) {
-    playbackQueue.splice(index, 1);
-    updateQueueUI();
-}
-
-// Visualizer Logic
-function initializeVisualizer() {
-    const canvas = document.getElementById('visualizer');
-    const ctx = canvas.getContext('2d');
-
-    function resize() {
-        if (!canvas) return;
-        canvas.width = canvas.offsetWidth;
-        canvas.height = canvas.offsetHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
-}
-
-function startVisualizer() {
-    const canvas = document.getElementById('visualizer');
-    const canvasCtx = canvas.getContext('2d');
-
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioCtx.createAnalyser();
-        const source = audioCtx.createMediaElementSource(audioPlayer);
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-    }
-
-    analyser.fftSize = 64;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    function draw() {
-        requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(dataArray);
-
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const barWidth = (canvas.width / bufferLength) * 2.5;
-        let x = 0;
-
-        for (let i = 0; i < bufferLength; i++) {
-            const barHeight = (dataArray[i] / 255) * canvas.height;
-
-            // Spotify Green: #1DB954 -> rgb(29, 185, 84)
-            const r = 29;
-            const g = 185;
-            const b = 84;
-
-            canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${dataArray[i] / 255})`;
-            canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-
-            x += barWidth + 1;
-        }
-    }
-    draw();
-}
-
-// Keyboard Shortcuts
-function initializeKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-        switch (e.code) {
-            case 'Space':
-                e.preventDefault();
-                if (audioPlayer.paused) {
-                    audioPlayer.play();
-                    updatePlayButton(true);
-                } else {
-                    audioPlayer.pause();
-                    updatePlayButton(false);
-                }
-                break;
-            case 'ArrowLeft':
-                audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 5);
-                break;
-            case 'ArrowRight':
-                audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 5);
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                audioPlayer.volume = Math.min(1, audioPlayer.volume + 0.1);
-                const volSlider = document.querySelector('.volume-slider');
-                if (volSlider) volSlider.value = audioPlayer.volume * 100;
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                audioPlayer.volume = Math.max(0, audioPlayer.volume - 0.1);
-                const volSliderDown = document.querySelector('.volume-slider');
-                if (volSliderDown) volSliderDown.value = audioPlayer.volume * 100;
-                break;
-        }
-    });
-}
