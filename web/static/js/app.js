@@ -11,14 +11,7 @@ const audioPlayer = document.getElementById('audioPlayer');
 let isRepeatEnabled = false;
 let isShuffleEnabled = false;
 let currentPlaylist = [];
-let playbackQueue = [];
 let currentTrackIndex = -1;
-
-// Audio context for visualizer
-let audioCtx = null;
-let analyser = null;
-let source = null;
-let visualizerAnimation = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
@@ -29,8 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initializePlayer();
     initializePlaylists();
     initializeViewToggle();
-    initializeQueue();
-    initializeKeyboardShortcuts();
     loadLibrary();
 
     if (userData) {
@@ -290,11 +281,7 @@ function renderTrackCard(track, index, type = 'search') {
                 <button class="action-btn secondary" onclick="openDownloadModal(this)">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
                 </button>
-                <button class="action-btn secondary" onclick="addToQueue(${index}, '${type}')" title="Add to Queue">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 9H9V2H7v7H5L8 12l3-3zm3 2v-8h-2v8h2zm-12 9v2h20v-2H2zm16-7h-12v2h12v-2z" /></svg>
-                    <svg viewBox="0 0 24 24" fill="currentColor" style="width: 14px; height: 14px; margin-left: -10px;"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                </button>
-                ${userData ? `<button class="action-btn secondary" onclick="openAddToPlaylistModal(${index}, '${type}')" title="Add to Playlist">
+                ${userData ? `<button class="action-btn secondary" onclick="openAddToPlaylistModal(${index}, '${type}')">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>` : ''}
             </div>
@@ -321,12 +308,6 @@ async function playTrack(button, trackData = null) {
         currentTrackIndex = index;
     }
 
-    // Initialize visualizer context on first play
-    initializeVisualizer();
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
-
     if (!track) return;
 
     // Сначала пробуем Spotify preview (30 секунд)
@@ -340,7 +321,6 @@ async function playTrack(button, trackData = null) {
         });
         updatePlayerUI(track);
         updatePlayButton(true);
-        updateQueueUI(); // Highlight active in queue
     } else {
         // Нет preview - сразу используем YouTube
         playFromYouTube(track);
@@ -376,7 +356,6 @@ async function playFromYouTube(track) {
             });
             updatePlayerUI(track);
             updatePlayButton(true);
-            updateQueueUI(); // Highlight active in queue
 
             // Показываем статус кеширования
             if (data.cached) {
@@ -456,158 +435,6 @@ function initializePlayer() {
     document.getElementById('repeatBtn').addEventListener('click', toggleRepeat);
     document.getElementById('prevBtn').addEventListener('click', playPrevious);
     document.getElementById('nextBtn').addEventListener('click', playNext);
-    document.getElementById('queueBtn').addEventListener('click', toggleQueue);
-}
-
-function initializeVisualizer() {
-    if (audioCtx) return;
-
-    try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-
-        source = audioCtx.createMediaElementSource(audioPlayer);
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-
-        drawVisualizer();
-    } catch (e) {
-        console.error('Visualizer initialization failed:', e);
-    }
-}
-
-function drawVisualizer() {
-    const canvas = document.getElementById('visualizer');
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const draw = () => {
-        visualizerAnimation = requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(dataArray);
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const barWidth = (canvas.width / bufferLength) * 2.5;
-        let barHeight;
-        let x = 0;
-
-        for (let i = 0; i < bufferLength; i++) {
-            barHeight = dataArray[i] / 2;
-
-            // Gradient for bars
-            const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-            gradient.addColorStop(0, '#1db954');
-            gradient.addColorStop(1, '#1ed760');
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-
-            x += barWidth + 1;
-        }
-    };
-
-    draw();
-}
-
-function initializeQueue() {
-    // Initial UI update
-    updateQueueUI();
-}
-
-function toggleQueue() {
-    const panel = document.getElementById('queuePanel');
-    panel.classList.toggle('active');
-    if (panel.classList.contains('active')) {
-        updateQueueUI();
-    }
-}
-
-function updateQueueUI() {
-    const list = document.getElementById('queueList');
-    if (!list) return;
-
-    if (playbackQueue.length === 0) {
-        list.innerHTML = '<p style="text-align: center; color: var(--spotify-light-gray); padding: 20px; font-size: 13px;">Queue is empty</p>';
-        return;
-    }
-
-    list.innerHTML = playbackQueue.map((track, index) => `
-        <div class="queue-item ${currentTrack && currentTrack.id === track.id ? 'active' : ''}" onclick="playQueueItem(${index})">
-            <div class="queue-item-info">
-                <div class="queue-item-name">${track.name}</div>
-                <div class="queue-item-artist">${track.artist}</div>
-            </div>
-            <button class="control-btn" onclick="removeFromQueue(event, ${index})" style="padding: 4px;">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-            </button>
-        </div>
-    `).join('');
-}
-
-function playQueueItem(index) {
-    const track = playbackQueue[index];
-    playTrack(null, track);
-}
-
-function addToQueue(trackIndex, type = 'search') {
-    const track = type === 'library' ? libraryData[trackIndex] : resultsData[trackIndex];
-    if (!track) return;
-
-    // Avoid duplicates in queue
-    if (playbackQueue.some(t => t.id === track.id)) {
-        showNotification('Already in queue', 'info');
-        return;
-    }
-
-    playbackQueue.push(track);
-    updateQueueUI();
-    showNotification('Added to queue', 'success');
-}
-
-function removeFromQueue(event, index) {
-    event.stopPropagation();
-    playbackQueue.splice(index, 1);
-    updateQueueUI();
-}
-
-function initializeKeyboardShortcuts() {
-    window.addEventListener('keydown', (e) => {
-        // Ignore if searching or in input
-        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-            return;
-        }
-
-        switch (e.code) {
-            case 'Space':
-                e.preventDefault();
-                document.getElementById('playBtn').click();
-                break;
-            case 'ArrowRight':
-                if (e.ctrlKey) playNext();
-                else audioPlayer.currentTime += 5;
-                break;
-            case 'ArrowLeft':
-                if (e.ctrlKey) playPrevious();
-                else audioPlayer.currentTime -= 5;
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                const volUp = Math.min(1, audioPlayer.volume + 0.1);
-                audioPlayer.volume = volUp;
-                document.querySelector('.volume-slider').value = volUp * 100;
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                const volDown = Math.max(0, audioPlayer.volume - 0.1);
-                audioPlayer.volume = volDown;
-                document.querySelector('.volume-slider').value = volDown * 100;
-                break;
-        }
-    });
 }
 
 function formatTime(seconds) {
