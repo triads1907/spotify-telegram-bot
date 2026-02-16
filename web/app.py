@@ -538,73 +538,22 @@ def authenticate():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         user = loop.run_until_complete(db.verify_auth_token(token))
+        loop.close()
         
         if user:
-            userData = {
-                'id': user.id,
-                'username': user.username or 'User',
-                'first_name': user.first_name,
-                'last_name': user.last_name
-            }
-            
-            # Получаем последнее состояние воспроизведения
-            playback_state = loop.run_until_complete(db.get_playback_state(user.id))
-            loop.close()
-            
             return jsonify({
                 'success': True,
-                'user': userData,
-                'playback_state': playback_state
+                'user': {
+                    'id': user.id,
+                    'username': user.username or 'User',
+                    'first_name': user.first_name,
+                    'last_name': user.last_name
+                }
             })
         else:
-            loop.close()
-            return jsonify({'success': False, 'error': 'Invalid or expired token'}), 401
+            return jsonify({'error': 'Invalid or expired token'}), 401
     except Exception as e:
         print(f"❌ Auth error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/playback/sync', methods=['POST'])
-def sync_playback():
-    """Синхронизировать прогресс воспроизведения"""
-    try:
-        data = request.json
-        user_id = request.headers.get('X-User-ID')
-        
-        if not user_id or not data:
-            return jsonify({'error': 'Unauthorized or missing data'}), 401
-            
-        track_id = data.get('track_id')
-        position = data.get('position', 0)
-        
-        if not track_id:
-            return jsonify({'error': 'Missing track_id'}), 400
-            
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        success = loop.run_until_complete(db.update_playback_state(int(user_id), track_id, position))
-        loop.close()
-        
-        return jsonify({'success': success})
-    except Exception as e:
-        print(f"❌ Sync playback error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/playback/state', methods=['GET'])
-def get_playback_state():
-    """Получить последнее состояние воспроизведения"""
-    try:
-        user_id = request.headers.get('X-User-ID')
-        if not user_id:
-            return jsonify({'error': 'Unauthorized'}), 401
-            
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        state = loop.run_until_complete(db.get_playback_state(int(user_id)))
-        loop.close()
-        
-        return jsonify({'success': True, 'state': state})
-    except Exception as e:
-        print(f"❌ Get playback state error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/playlists', methods=['GET', 'POST'])

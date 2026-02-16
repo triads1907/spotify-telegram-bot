@@ -30,10 +30,6 @@ class User(Base):
     format: Mapped[str] = mapped_column(String(10), default='mp3')  # mp3, flac
     notifications: Mapped[bool] = mapped_column(Integer, default=1)
     
-    # Состояние плеера (Синхронизация прогресса)
-    last_track_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    last_position: Mapped[Optional[int]] = mapped_column(Integer, default=0) # в секундах
-    
     # Статистика (Функция 9)
     total_downloads: Mapped[int] = mapped_column(Integer, default=0)
     total_size_mb: Mapped[float] = mapped_column(Integer, default=0)  # Используем Integer для SQLite

@@ -26,22 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (userData) {
         loadPlaylists();
-
-        // Если мы уже залогинены (userData из localStorage), но нет нового токена в URL
-        // запрашиваем последнее состояние воспроизведения с сервера
-        const urlParams = new URLSearchParams(window.location.search);
-        if (!urlParams.get('auth')) {
-            fetchPlaybackState();
-        }
     }
 
     // Backup БД при закрытии/обновлении страницы
     window.addEventListener('beforeunload', function (e) {
-        // Синхронизируем положение плеера перед уходом (принудительно)
-        if (userData && currentTrack) {
-            syncPlayback(true);
-        }
-
         // Отправляем запрос на backup (используем sendBeacon для надежности)
         const backupUrl = '/api/backup-db';
 
@@ -97,21 +85,6 @@ function initializeViewToggle() {
 }
 
 // Auth Logic
-async function fetchPlaybackState() {
-    if (!userData) return;
-    try {
-        const response = await fetch('/api/playback/state', {
-            headers: { 'X-User-ID': userData.id.toString() }
-        });
-        const data = await response.json();
-        if (data.success && data.state && data.state.track) {
-            resumeLastPlayback(data.state);
-        }
-    } catch (error) {
-        console.error('Fetch playback state error:', error);
-    }
-}
-
 async function checkAuthToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const hostToken = urlParams.get('auth');
@@ -134,11 +107,6 @@ async function checkAuthToken() {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 updateUserUI();
                 loadPlaylists();
-
-                // Обработка последнего состояния воспроизведения
-                if (data.playback_state && data.playback_state.track) {
-                    resumeLastPlayback(data.playback_state);
-                }
             } else {
                 showNotification('Invalid or expired token', 'error');
             }
@@ -147,64 +115,6 @@ async function checkAuthToken() {
             showNotification('Authentication failed', 'error');
         }
     }
-}
-
-async function resumeLastPlayback(state) {
-    if (!state || !state.track) return;
-
-    const track = state.track;
-    const position = state.position || 0;
-
-    console.log(`🎵 Resuming last playback: ${track.artist} - ${track.name} at ${position}s`);
-
-    // Подготавливаем плеер
-    currentTrack = track;
-    updatePlayerUI(track);
-
-    // Подгружаем аудио
-    await playFromYouTube(track, false); // false = don't auto-play
-
-    // Устанавливаем время только когда аудио готово
-    if (position > 0) {
-        const onMetadataLoaded = () => {
-            audioPlayer.currentTime = position;
-            console.log(`⏱️ Position set to ${position}s`);
-            audioPlayer.removeEventListener('loadedmetadata', onMetadataLoaded);
-        };
-
-        if (audioPlayer.readyState >= 1) { // 1 = HAVE_METADATA
-            audioPlayer.currentTime = position;
-        } else {
-            audioPlayer.addEventListener('loadedmetadata', onMetadataLoaded);
-        }
-    }
-
-    showNotification(`Last played: ${track.name}`, 'info');
-}
-
-let lastSyncTime = 0;
-function syncPlayback(force = false) {
-    if (!userData || !currentTrack) return;
-    if (audioPlayer.paused && !force) return;
-
-    const currentTime = Math.floor(audioPlayer.currentTime);
-
-    // Синхронизируем раз в 10 секунд (если не принудительно)
-    if (!force && Date.now() - lastSyncTime < 10000) return;
-
-    lastSyncTime = Date.now();
-
-    fetch('/api/playback/sync', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-User-ID': userData.id.toString()
-        },
-        body: JSON.stringify({
-            track_id: currentTrack.id,
-            position: currentTime
-        })
-    }).catch(err => console.error('Sync error:', err));
 }
 
 function updateUserUI() {
@@ -417,7 +327,7 @@ async function playTrack(button, trackData = null) {
     }
 }
 
-async function playFromYouTube(track, autoPlay = true) {
+async function playFromYouTube(track) {
     try {
         showNotification('Preparing track...', 'info');
 
@@ -440,18 +350,12 @@ async function playFromYouTube(track, autoPlay = true) {
             currentTrack = track;
             // Используем прямую ссылку из Telegram
             audioPlayer.src = data.stream_url;
-
-            if (autoPlay) {
-                audioPlayer.play().catch(err => {
-                    console.error('Play error:', err);
-                    showNotification('Autoplay blocked', 'info');
-                });
-                updatePlayButton(true);
-            } else {
-                updatePlayButton(false);
-            }
-
+            audioPlayer.play().catch(err => {
+                console.error('Play error:', err);
+                showNotification('Could not play track', 'error');
+            });
             updatePlayerUI(track);
+            updatePlayButton(true);
 
             // Показываем статус кеширования
             if (data.cached) {
@@ -502,18 +406,6 @@ function initializePlayer() {
         const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
         progressSlider.value = progress;
         currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
-
-        // Синхронизация с сервером
-        syncPlayback();
-    });
-
-    // Сохранение при паузе
-    audioPlayer.addEventListener('pause', () => {
-        updatePlayButton(false);
-        // Немедленная синхронизация при паузе
-        if (userData && currentTrack) {
-            syncPlayback(true);
-        }
     });
 
     // Установка общей длительности

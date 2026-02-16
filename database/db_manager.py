@@ -61,32 +61,6 @@ class DatabaseManager:
         self.async_session = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         print("🔌 Database engine re-initialized")
 
-    async def _migrate_schema(self, conn):
-        """Миграция схемы БД (добавление новых колонок)"""
-        try:
-            # Проверяем колонки в таблице users
-            columns = await conn.run_sync(
-                lambda request: {c['name'] for c in request.dialect.get_columns(request.connection, 'users')}
-            )
-            
-            # Добавляем last_track_id если нет
-            if 'last_track_id' not in columns:
-                print("🔄 [MIGRATE] Adding 'last_track_id' column to users table...")
-                await conn.execute(text("ALTER TABLE users ADD COLUMN last_track_id VARCHAR(255)"))
-                
-            # Добавляем last_position если нет
-            if 'last_position' not in columns:
-                print("🔄 [MIGRATE] Adding 'last_position' column to users table...")
-                await conn.execute(text("ALTER TABLE users ADD COLUMN last_position INTEGER DEFAULT 0"))
-                
-            # Добавляем notifications если нет (на случай старых версий)
-            if 'notifications' not in columns:
-                print("🔄 [MIGRATE] Adding 'notifications' column to users table...")
-                await conn.execute(text("ALTER TABLE users ADD COLUMN notifications INTEGER DEFAULT 1"))
-                
-        except Exception as e:
-            print(f"⚠️ Schema migration warning: {e}")
-
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         async with self.engine.begin() as conn:
@@ -100,11 +74,6 @@ class DatabaseManager:
                 Base.metadata.create_all(bind=sync_conn, checkfirst=True)
             
             await conn.run_sync(create_tables)
-            
-            # Запускаем миграции для существующих таблиц
-            from sqlalchemy import text
-            await self._migrate_schema(conn)
-            
         print("✅ База данных инициализирована (WAL mode enabled)")
     
     async def close(self):
@@ -465,49 +434,14 @@ class DatabaseManager:
     async def update_user_setting(self, user_id: int, setting_name: str, value):
         """Обновить настройку пользователя"""
         async with self.async_session() as session:
-            user = await session.get(User, user_id)
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            
             if user:
                 setattr(user, setting_name, value)
                 await session.commit()
                 return True
             return False
-
-    async def update_playback_state(self, user_id: int, track_id: str, position: int):
-        """Обновить информацию о последнем прослушанном треке"""
-        async with self.async_session() as session:
-            user = await session.get(User, user_id)
-            if user:
-                user.last_track_id = track_id
-                user.last_position = int(position)
-                await session.commit()
-                return True
-            return False
-
-    async def get_playback_state(self, user_id: int):
-        """Получить информацию о последнем прослушанном треке"""
-        async with self.async_session() as session:
-            user = await session.get(User, user_id)
-            if user and user.last_track_id:
-                # Находим сам трек для метаданных
-                track_stmt = select(Track).where(Track.id == user.last_track_id)
-                track_result = await session.execute(track_stmt)
-                track = track_result.scalar_one_or_none()
-                
-                track_data = None
-                if track:
-                    track_data = {
-                        'id': track.id,
-                        'name': track.name,
-                        'artist': track.artist,
-                        'image': track.image_url
-                    }
-                
-                return {
-                    'track_id': user.last_track_id,
-                    'position': user.last_position,
-                    'track': track_data
-                }
-            return None
                 
     async def is_library_empty(self) -> bool:
         """Проверить, пуста ли библиотека треков"""

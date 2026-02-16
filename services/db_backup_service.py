@@ -157,51 +157,27 @@ class DatabaseBackupService:
     
     async def start_periodic_backup(self, interval: int = 300):
         """
-        Запустить мониторинг изменений БД и периодический backup
+        Запустить периодический backup БД
         
         Args:
-            interval: Не используется (legacy), теперь мониторим mtime файла
+            interval: Интервал в секундах (по умолчанию 300 = 5 минут)
         """
         self.is_running = True
-        print(f"⏰ Starting smart database backup (monitoring file changes)...")
-        
-        # Минимальный интервал между бэкапами (троттлинг)
-        MIN_INTERVAL = 10 
+        print(f"⏰ Starting periodic database backup (every {interval} seconds)...")
         
         while self.is_running:
             try:
-                # Проверяем каждые 5 секунд
-                await asyncio.sleep(5)
+                await asyncio.sleep(interval)
                 
-                if not self.is_running:
-                    break
+                if self.is_running:
+                    await self.backup_to_telegram()
                     
-                if not os.path.exists(self.db_path):
-                    continue
-
-                # Получаем время последнего изменения файла
-                mtime = os.path.getmtime(self.db_path)
-                last_modified = datetime.fromtimestamp(mtime)
-                
-                # Если файл изменился ПОСЛЕ последнего бэкапа
-                if last_modified > self.last_backup_time:
-                    # И прошло достаточно времени с последнего бэкапа (троттлинг)
-                    time_since_last_backup = (datetime.now() - self.last_backup_time).total_seconds()
-                    
-                    if time_since_last_backup >= MIN_INTERVAL:
-                        print(f"📝 Database changed at {last_modified}, triggering backup...")
-                        await self.backup_to_telegram(force=True)
-                    else:
-                        # Файл изменился, но рано делать бэкап - ждем следующей итерации
-                        pass
-                        
             except asyncio.CancelledError:
                 print("🛑 Periodic backup cancelled")
                 break
             except Exception as e:
-                print(f"❌ Error in backup monitor: {e}")
+                print(f"❌ Error in periodic backup: {e}")
                 # Продолжаем работу даже при ошибке
-                await asyncio.sleep(10)
                 continue
     
     def stop_periodic_backup(self):
