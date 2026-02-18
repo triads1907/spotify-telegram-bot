@@ -163,7 +163,7 @@ def sync_deep():
 
 @app.route('/api/search', methods=['POST'])
 def search():
-    """Поиск треков"""
+    """Поиск треков (БД + Spotify)"""
     try:
         data = request.json
         query = data.get('query', '')
@@ -178,28 +178,61 @@ def search():
         # Обычный поиск по тексту
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        results = loop.run_until_complete(spotify_service.search_track(query))
+        
+        # 1. Сначала ищем во внутренней базе (Discover)
+        discover_tracks = []
+        try:
+            discover_tracks = loop.run_until_complete(db.search_telegram_files(query, limit=10))
+            print(f"🏠 [WEB] Found {len(discover_tracks)} tracks in Discover database")
+        except Exception as db_e:
+            print(f"⚠️ [WEB] Database search failed: {db_e}")
+
+        # 2. Ищем в Spotify
+        spotify_tracks_raw = []
+        try:
+            spotify_tracks_raw = loop.run_until_complete(spotify_service.search_track(query))
+        except Exception as sp_e:
+            print(f"⚠️ [WEB] Spotify search failed: {sp_e}")
+        
         loop.close()
         
-        if not results:
-            return jsonify({'tracks': []})
+        # Объединяем результаты и убираем дубликаты
+        seen_ids = set()
+        final_tracks = []
         
-        # Форматируем результаты
-        tracks = []
-        for track in results[:10]:
-            tracks.append({
-                'id': track.get('id'),
-                'name': track.get('name'),
-                'artist': track.get('artist'),
+        # Приоритет - Discover
+        for track in discover_tracks:
+            seen_ids.add(track['id'])
+            final_tracks.append({
+                'id': track['id'],
+                'name': f"✨ {track['name']}",
+                'artist': track['artist'],
                 'album': track.get('album'),
-                'duration': track.get('duration_ms', 0) // 1000,
-                'image': track.get('image_url'),
-                'preview_url': track.get('preview_url')
+                'duration': 0, # В Discover может не быть длительности
+                'image': track.get('image'),
+                'preview_url': None,
+                'from_discover': True
             })
+            
+        # Добавляем из Spotify то, чего нет в Discover
+        for track in spotify_tracks_raw:
+            if track.get('id') not in seen_ids:
+                final_tracks.append({
+                    'id': track.get('id'),
+                    'name': track.get('name'),
+                    'artist': track.get('artist'),
+                    'album': track.get('album'),
+                    'duration': (track.get('duration_ms', 0) // 1000) if track.get('duration_ms') else 0,
+                    'image': track.get('image_url'),
+                    'preview_url': track.get('preview_url')
+                })
         
-        return jsonify({'tracks': tracks})
+        return jsonify({'tracks': final_tracks[:20]})
     
     except Exception as e:
+        print(f"❌ Comprehensive search error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sync-library', methods=['POST'])
