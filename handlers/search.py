@@ -379,3 +379,71 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         get_string("search_welcome", lang),
         parse_mode='HTML'
     )
+
+
+async def handle_text_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик текстового поиска (не ссылка)
+    Ищет в Discover (БД) и в Spotify
+    """
+    query = update.message.text
+    user_id = update.effective_user.id
+    db = context.bot_data.get('db')
+    spotify_service: SpotifyService = context.bot_data.get('spotify')
+    
+    lang = "ru"
+    if db:
+        user = await db.get_or_create_user(user_id, update.effective_user)
+        lang = user.language
+        
+    status_msg = await update.message.reply_text(
+        "🔍 Ищу в библиотеке и Spotify..." if lang == "ru" else "🔍 Searching in library and Spotify..."
+    )
+    
+    try:
+        # 1. Поиск в Discover (БД)
+        discover_results = []
+        if db:
+            discover_results = await db.search_telegram_files(query, limit=5)
+            
+        # 2. Поиск в Spotify
+        spotify_results = []
+        if spotify_service:
+            spotify_results = await spotify_service.search_tracks(query, limit=5)
+            
+        # Убираем дубликаты (если трек есть и там и там, приоритет Discover)
+        seen_ids = set()
+        final_results = []
+        
+        # Сначала добавляем результаты из Discover
+        for track in discover_results:
+            seen_ids.add(track['id'])
+            # Помечаем, что трек из библиотеки
+            track['name'] = f"✨ {track['name']}"
+            final_results.append(track)
+            
+        # Затем добавляем из Spotify те, которых нет в Discover
+        for track in spotify_results:
+            if track['id'] not in seen_ids:
+                final_results.append(track)
+                
+        if not final_results:
+            await status_msg.edit_text(
+                "❌ Ничего не найдено по вашему запросу." if lang == "ru" else "❌ Nothing found for your query."
+            )
+            return
+            
+        # Формируем сообщение
+        message = f"🔎 <b>Результаты поиска для:</b> <i>{query}</i>\n\n"
+        message += "Выберите трек для скачивания:" if lang == "ru" else "Select a track to download:"
+        
+        # Используем существующую клавиатуру (она берет первые 5-10 треков)
+        keyboard = get_search_results_keyboard(final_results)
+        
+        await status_msg.edit_text(message, reply_markup=keyboard, parse_mode='HTML')
+        
+    except Exception as e:
+        print(f"❌ Ошибка при текстовом поиске: {e}")
+        await status_msg.edit_text(
+            "❌ Произошла ошибка при поиске. Попробуйте другую формулировку." if lang == "ru" else "❌ Search error. Try different keywords."
+        )

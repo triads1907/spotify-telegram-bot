@@ -26,6 +26,7 @@ from handlers import (
     help_command,
     handle_spotify_link,
     search_command,
+    handle_text_search,
     my_playlists_command,
     create_playlist_command,
     handle_callback
@@ -212,6 +213,9 @@ def main():
     # Обработчик Spotify ссылок
     spotify_link_filter = filters.TEXT & filters.Regex(r'(https?://)?(open\.)?spotify\.com/(track|album|playlist|artist)/[a-zA-Z0-9]+')
     application.add_handler(MessageHandler(spotify_link_filter, handle_spotify_link))
+    
+    # Обработчик общего текстового поиска (не ссылка и не кнопка меню)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(btn_regex) & ~spotify_link_filter, handle_text_search))
     
     # ========== ОБРАБОТЧИКИ CALLBACK ЗАПРОСОВ ==========
     

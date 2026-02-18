@@ -748,6 +748,35 @@ class DatabaseManager:
             )
             return result.scalar_one_or_none()
 
+    async def search_telegram_files(self, query: str, limit: int = 10) -> List[dict]:
+        """Поиск файлов в Telegram Storage (Discover) по артисту или названию"""
+        async with self.async_session() as session:
+            from sqlalchemy import or_
+            result = await session.execute(
+                select(TelegramFile, Track)
+                .join(Track, TelegramFile.track_id == Track.id, isouter=True)
+                .where(
+                    or_(
+                        TelegramFile.artist.ilike(f"%{query}%"),
+                        TelegramFile.track_name.ilike(f"%{query}%")
+                    )
+                )
+                .limit(limit)
+            )
+            
+            tracks = []
+            for tg_file, track in result:
+                tracks.append({
+                    'id': tg_file.track_id,
+                    'name': tg_file.track_name or (track.name if track else "Unknown Track"),
+                    'artist': tg_file.artist or (track.artist if track else "Unknown Artist"),
+                    'album': track.album if track else None,
+                    'image': tg_file.image_url or (track.image_url if track else None),
+                    'spotify_url': track.spotify_url if track else f"https://open.spotify.com/track/{tg_file.track_id}",
+                    'from_discover': True
+                })
+            return tracks
+
     # ========== BACKUP LOGS ==========
     
     async def save_backup_log(self, message_id: int, file_id: str) -> BackupLog:
